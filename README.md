@@ -1,6 +1,6 @@
 # Pixel Wrangler: HDMI to whatever
 
-![Early PCB layout with air wires](images/pcb.png)
+![Rendering of the pre-production beta board](images/pcb-3d.png)
 
 The Pixel Wrangler is a tool for converting HDMI video into anything else.
 It uses an ice40up5k FPGA to decode the video stream and stores a section
@@ -16,6 +16,8 @@ it is easily adaptable to different protocols.  Some examples that are possible:
 * LED strips (ws2812 or other protocols)
 
 ## Limitations
+
+![Early PCB layout with air wires](images/pcb.png)
 
 * Only baseline video is supported (640x480 @ 60Hz)
 * 25 MHz maximum pixel clock (maybe improved with better code, but not by very much)
@@ -33,7 +35,7 @@ It's really surprising that it works as well as it does.
 
 ## Todo
 
-* [ ] Finish board design
+* [X] Finish board design
 * [ ] DDR on input for slower clock
 * [ ] Classic Mac mode
 * [ ] LED strip mode
