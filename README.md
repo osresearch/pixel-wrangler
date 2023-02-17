@@ -20,8 +20,15 @@ it is easily adaptable to different protocols.  Some examples that are possible:
 
 ![Early PCB layout with air wires](images/pcb.png)
 
-[v0 Schematic](pcb/wrangler_v0.pdf) is based on the UPduino v3.0 by tinyvision.ai, heavily modified for this application.
+[v0 Schematic](pcb/wrangler_v0.pdf) is based on the [UPduino v3.0 by tinyvision.ai](https://www.tindie.com/products/tinyvision_ai/upduino-v31-low-cost-lattice-ice40-fpga-board/),
+heavily modified for this specific application.
 
+The HDMI connector has one differential pair carrying a 25 MHz clock and three differential
+pairs running at 250 MHz and carrying 10 bits per pixel.  The clock *must* connect
+to the one pin on the ice40up5k that has a LVDS connection to the global clock buffer
+so that the pixel clock can be quickly fanned-out to the rest of the logic that uses it.
+The three data pairs are routed to the LVDS inputs; D0 and D1 are inverted so that they
+don't have to cross on the PCB and must be flipped in the logic.
 
 ## Limitations
 
