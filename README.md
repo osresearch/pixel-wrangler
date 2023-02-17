@@ -10,19 +10,32 @@ in any other format required.
 Since the FPGA has total flexibility in how it drives the output pins
 it is easily adaptable to different protocols.  Some examples that are possible:
 
-* Classic CRT monitors
+* Classic CRT monitors like B&W Mac or Hercules monitors
 * LED matrices
 * Flip dots
 * LED strips (ws2812 or other protocols)
+* Lots of servos for "wooden mirrors"
 
-## Limitations
+## PCB design
 
 ![Early PCB layout with air wires](images/pcb.png)
 
-* Only baseline video is supported (640x480 @ 60Hz)
-* 25 MHz maximum pixel clock (maybe improved with better code, but not by very much)
-* The amount of the video that can be buffered is limited to 1 Mib (resolutions supported are 1024x1024x1, 512x512x4, 256x256x16 or 256x128x24)
+[v0 Schematic](pcb/wrangler_v0.pdf) is based on the UPduino v3.0 by tinyvision.ai, heavily modified for this application.
+
+
+## Limitations
+
+* Only "baseline video" is supported
+  * 640x480 @ 60Hz
+  * 25 MHz maximum pixel clock
+  * DDR might make it possible to use higher screen resolution
+* 1 Mib frame buffer memory in the ice40. Resolutions supported are:
+  * 1024x1024x1
+  * 512x512x4
+  * 256x256x16
+  * 256x128x24
 * 3.3V IO on GPIO pins
+* No protection against shorts or overcurrent. Be careful!
 
 
 ## Prototyping
