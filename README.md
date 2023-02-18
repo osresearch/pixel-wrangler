@@ -56,6 +56,8 @@ It's really surprising that it works as well as it does.
 ## Todo
 
 * [X] Finish board design
-* [ ] DDR on input for slower clock
+* [ ] EDID ROM
+* [ ] DDR on input for high-res inputs
+* [ ] Documentation on writing new interfaces
 * [ ] Classic Mac mode
 * [ ] LED strip mode
