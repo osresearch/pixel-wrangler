@@ -73,9 +73,10 @@ module top(
 	wire clk_48mhz;
 	SB_HFOSC inthosc(.CLKHFPU(1'b1), .CLKHFEN(1'b1), .CLKHF(clk_48mhz));
 	//wire clk = clk_48mhz;
-	reg clk;
+	reg [4:0] counter;
+	reg clk = counter[2];
 	always @(posedge clk_48mhz)
-		clk <= ~clk;
+		counter <= counter + 1;
 
 	wire panel_data1 = gpio_12;
 	wire panel_latch = gpio_21;
@@ -141,8 +142,9 @@ module top(
 
 	parameter LED_PANEL_WIDTH = 104;
 	parameter ADDR_WIDTH = 12;
-	parameter MIN_X = 105;
-	parameter MIN_Y = 110;
+	parameter MIN_X = 50;
+	//parameter MIN_Y = 480; // we aren't doing overscan correctly
+	parameter MIN_Y = 100; // we aren't doing overscan correctly
 
 	// turn the weird linear addresses from the led matrix into
 	// frame buffer read addresses for the RAM.  note that both
@@ -453,6 +455,7 @@ module led_matrix(
 			// use binary-coded pulse modulation, so turn on the output
 			// based on each bit and the current brightness level
 			if (data_in[latch_counter])
+			//if (data_in)
 				data_out <= 1;
 			else
 				data_out <= 0;
