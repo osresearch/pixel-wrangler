@@ -15,7 +15,7 @@
  * Only Channel 0 (Blue) has the synchronization bits and the
  * TERC4 data during the data island period.
  */
-`include "hdmi_pll.v"
+`include "hdmi_pll_ddr.v"
 
 module tmds_8b10b_decoder(
 	input clk,
@@ -137,8 +137,18 @@ module tmds_shift_register_ddr(
 		.D_IN_1(in1)  // neg edge of bit_clk
 	);
 
+	reg in1_0;
+	reg in0_0;
+
+	// if we copy the negedge bit we have less routing time?
+	always @(negedge bit_clk)
+		in1_0 <= in1;
+
 	always @(posedge bit_clk)
-		out <= { in0, in1, out[BITS-1:2] };
+	begin
+		in0_0 <= in0;
+		out <= { in1_0, in0_0, out[BITS-1:2] };
+	end
 endmodule
 
 // non ddr version for a 10 bit shift register
@@ -257,7 +267,6 @@ module tmds_raw_decoder(
 	input d1_p,
 	input d2_p,
 	input clk_p,
-	input [3:0] pll_delay,
 
 	// d0,d1,d2 are in clk domain
 	output [9:0] d0,
@@ -286,8 +295,7 @@ module tmds_raw_decoder(
 	hdmi_pll pll(
 		.clock_in(clk),
 		.clock_out(bit_clk),
-		.locked(hdmi_locked),
-		.delay(pll_delay)
+		.locked(hdmi_locked)
 	);
 
 	// bit_clk domain
@@ -295,7 +303,7 @@ module tmds_raw_decoder(
 	wire [9:0] d1_data;
 	wire [9:0] d2_data;
 
-	tmds_shift_register d0_shift(
+	tmds_shift_register_ddr d0_shift(
 		.bit_clk(bit_clk),
 		.in_p(d0_p),
 		.out(d0_data)
