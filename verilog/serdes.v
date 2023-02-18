@@ -32,283 +32,6 @@
 `include "uart.v"
 
 
-// Deserialize 10 input bits into a 10-bit register,
-// clocking on the rising edge of the bit clock using a DDR pin
-// to capture two bits per clock (the PLL clock runs at 5x the TMDS clock)
-// the bits are sent LSB first
-module tmds_shift_register_ddr(
-	input bit_clk,
-	input in_p,
-	output [BITS-1:0] out
-);
-	parameter BITS = 10;
-	reg [BITS-1:0] out;
-	wire in0, in1;
-
-	SB_IO #(
-		.PIN_TYPE(6'b000000),
-		.IO_STANDARD("SB_LVDS_INPUT")
-	) diff_io (
-		.PACKAGE_PIN(in_p),
-		.INPUT_CLK(bit_clk),
-		.D_IN_0(in0), // pos edge of bit_clk
-		.D_IN_1(in1)  // neg edge of bit_clk
-	);
-
-	always @(posedge bit_clk)
-		out <= { in0, in1, out[BITS-1:2] };
-endmodule
-
-// non ddr version for a 10 bit shift register
-module tmds_shift_register(
-	input bit_clk,
-	input in_p,
-	output [BITS-1:0] out
-);
-	parameter BITS = 10;
-	reg [BITS-1:0] out;
-	wire in0;
-
-	SB_IO #(
-		.PIN_TYPE(6'b000000),
-		.IO_STANDARD("SB_LVDS_INPUT")
-	) diff_io (
-		.PACKAGE_PIN(in_p),
-		.INPUT_CLK(bit_clk),
-		.D_IN_0(in0) // pos edge of bit_clk
-	);
-
-	always @(posedge bit_clk)
-		out <= { in0, out[BITS-1:1] };
-endmodule
-
-// detect a control messgae in the shift register and use it to resync our pixel clock
-// tracks if our clock is still in sync with the old values
-module tmds_sync_recognizer(
-	input clk,
-	input [9:0] in,
-	output valid,
-	output [3:0] phase
-);
-	//parameter CTRL_00 = 10'b1101010100; // 354
-	//parameter CTRL_01 = 10'b0010101011; // 0AB
-	//parameter CTRL_10 = 10'b0101010100; // 154
-	parameter CTRL_11 = 10'b1010101011; // 2AB
-	parameter DELAY_BITS = 18;
-
-	reg valid;
-	reg [3:0] phase = 0;
-	reg [DELAY_BITS:0] counter;
-
-	always @(posedge clk)
-	begin
-		counter <= counter + 1;
-
-		if (in == CTRL_11)
-		begin
-			// we have a good control word!
-			valid <= 1;
-			counter <= 0;
-		end else
-		if (counter[DELAY_BITS])
-		begin
-			// no recent control word! adjust the phase
-			if (phase == 4'h9)
-				phase <= 0;
-			else
-				phase <= phase + 1;
-
-			valid <= 0;
-			counter <= 0;
-		end
-	end
-endmodule
-
-
-module tmds_clock_cross(
-	input clk,
-	input bit_clk,
-	input [3:0] phase,
-	input [9:0] d0_data,
-	input [9:0] d1_data,
-	input [9:0] d2_data,
-	output [9:0] d0,
-	output [9:0] d1,
-	output [9:0] d2
-);
-	reg wen;
-	reg [3:0] bit_counter = 0;
-
-	always @(posedge bit_clk)
-	begin
-		wen <= bit_counter == phase;
-
-		if (bit_counter == 4'h9)
-			bit_counter <= 0;
-		else
-			bit_counter <= bit_counter + 1;
-	end
-
-	// transfer the shift registers to the clk domain
-	// through two dual port block rams in 16-bit wide mode
-	ram #(
-		.ADDR_WIDTH(1),
-		.DATA_WIDTH(30),
-	) clock_cross(
-		.wr_clk(bit_clk),
-		.wr_enable(wen),
-		.wr_addr(0),
-		.wr_data({d0_data, d1_data, d2_data}),
-		.rd_clk(clk),
-		.rd_addr(0),
-		.rd_data({d0,d1,d2})
-	);
-endmodule
-
-
-// Synchronize the three channels with the TMDS clock and unknown phase
-// of the bits.  Returns the raw 8b10b encoded values for futher processing
-// and a TMDS synchronize clock for the data stream.  The data are only valid
-// when locked
-module hdmi_raw(
-	input d0_p,
-	input d1_p,
-	input d2_p,
-	input clk_p,
-	input [3:0] pll_delay,
-
-	// d0,d1,d2 are in clk domain
-	output [9:0] d0,
-	output [9:0] d1,
-	output [9:0] d2,
-	output valid, // good pixel data
-	output locked, // only timing data
-	output clk,
-	output bit_clk
-);
-	wire clk; // 25 MHz decoded from TDMS input
-	wire bit_clk; // 250 MHz PLL'ed from TMDS clock (or 125 MHz if DDR)
-	reg pixel_strobe, pixel_valid; // when new pixels are detected by the synchronizer
-	wire hdmi_locked;
-	assign locked = hdmi_locked;
-	reg valid;
-
-	SB_GB_IO #(
-		.PIN_TYPE(6'b000000),
-		.IO_STANDARD("SB_LVDS_INPUT")
-	) differential_clock_input (
-		.PACKAGE_PIN(clk_p),
-		.GLOBAL_BUFFER_OUTPUT(clk)
-	);
-
-	hdmi_pll pll(
-		.clock_in(clk),
-		.clock_out(bit_clk),
-		.locked(hdmi_locked),
-		.delay(pll_delay)
-	);
-
-	// bit_clk domain
-	wire [9:0] d0_data;
-	wire [9:0] d1_data;
-	wire [9:0] d2_data;
-
-	tmds_shift_register d0_shift(
-		.bit_clk(bit_clk),
-		.in_p(d0_p),
-		.out(d0_data)
-	);
-
-	tmds_shift_register d1_shift(
-		.bit_clk(bit_clk),
-		.in_p(d1_p),
-		.out(d1_data)
-	);
-
-	tmds_shift_register d2_shift(
-		.bit_clk(bit_clk),
-		.in_p(d2_p),
-		.out(d2_data)
-	);
-
-	// detect the pixel clock from the PLL'ed bit_clk
-	// only channel 0 carries the special command words
-	wire [3:0] phase;
-
-	tmds_sync_recognizer d0_sync_recognizer(
-		.clk(clk),
-		.in(d0),
-		.phase(phase),
-		.valid(pixel_valid)
-	);
-
-	// cross the data words from bit_clk to clk domain
-	tmds_clock_cross crosser(
-		.clk(clk),
-		.bit_clk(bit_clk),
-		.phase(phase),
-		.d0_data(d0_data),
-		.d1_data(d1_data),
-		.d2_data(d2_data),
-		.d0(d0),
-		.d1(d1),
-		.d2(d2)
-	);
-
-	always @(posedge clk)
-	begin
-		valid <= hdmi_locked && pixel_valid;
-	end
-endmodule
-
-module hdmi_decode(
-	input clk,
-	input [9:0] hdmi_d0,
-	input [9:0] hdmi_d1,
-	input [9:0] hdmi_d2,
-
-	// data valid should be based on sync pulses, so ignore it for now
-	output data_valid,
-	output [7:0] d0,
-	output [7:0] d1,
-	output [7:0] d2,
-
-	// these hold value so sync_valid is not necessary
-	output sync_valid,
-	output hsync,
-	output vsync,
-
-	// terc4 data is not used yet
-	output ctrl_valid,
-	output [3:0] ctrl
-);
-	tmds_decode d0_decoder(
-		.clk(clk),
-		.in(hdmi_d0),
-		.data(d0),
-		.sync({vsync,hsync}),
-		.ctrl(ctrl),
-		.data_valid(data_valid),
-		.sync_valid(sync_valid),
-		.ctrl_valid(ctrl_valid),
-	);
-
-	// audio data is on d1 and d2, but we don't handle it yet
-	tmds_decode d1_decoder(
-		.clk(clk),
-		.in(hdmi_d1),
-		.data(d1),
-	);
-
-	tmds_decode d2_decoder(
-		.clk(clk),
-		.in(hdmi_d2),
-		.data(d2),
-	);
-
-endmodule
-
-
 module hdmi_framebuffer(
 	input clk,
 	input valid,
@@ -403,11 +126,8 @@ module top(
 	wire clk = clk_48mhz;
 
 
-	wire hdmi_clk, hdmi_locked, hdmi_bit_clk;
+	wire hdmi_clk, hdmi_bit_clk;
 	wire hdmi_valid;
-	wire [9:0] hdmi_d0;
-	wire [9:0] hdmi_d1;
-	wire [9:0] hdmi_d2;
 
 	wire data_valid;
 	wire [7:0] d0;
@@ -418,33 +138,17 @@ module top(
 	// unused for now
 	reg [3:0] pll_delay = 0;
 
-	hdmi_raw hdmi_raw_i(
+	tmds_decoder tmds_decoder_i(
 		// physical inputs
 		.clk_p(gpio_37),
 		.d0_p(gpio_42),
 		.d1_p(gpio_43),
 		.d2_p(gpio_26),
 
-		// tuning for bit clock
-		.pll_delay(pll_delay),
-
 		// outputs
 		.clk(hdmi_clk),
 		.bit_clk(hdmi_bit_clk),
-		.locked(hdmi_locked),
-		.valid(hdmi_valid),
-		.d0(hdmi_d0),
-		.d1(hdmi_d1),
-		.d2(hdmi_d2),
-	);
-
-	hdmi_decode hdmi_decode_i(
-		.clk(hdmi_clk),
-		.hdmi_d0(hdmi_d0),
-		.hdmi_d1(hdmi_d1),
-		.hdmi_d2(hdmi_d2),
-
-		// outputs
+		.locked(hdmi_valid),
 		.hsync(hsync),
 		.vsync(vsync),
 		.d0(d0),
@@ -452,10 +156,6 @@ module top(
 		.d2(d2),
 		.data_valid(data_valid)
 	);
-
-	reg guard_band;
-	always @(posedge hdmi_clk)
-		guard_band <= hdmi_d0 == 10'h2CC;
 
 	parameter ADDR_WIDTH = 16;
 	parameter WIDTH = 256;
@@ -570,7 +270,7 @@ module top(
 
 	reg [24:0] hdmi_bit_counter;
 	reg [24:0] hdmi_clk_counter;
-	wire pulse = hdmi_locked && hdmi_clk_counter[24];
+	wire pulse = hdmi_valid && hdmi_clk_counter[24];
 	assign led_r = !(pulse && !hdmi_valid); // red means TDMS sync, no pixel data
 	assign led_g = !(pulse &&  hdmi_valid); // green means good pixel data
 
@@ -581,7 +281,7 @@ module top(
 
 	always @(posedge hdmi_clk)
 	begin
-		if (hdmi_locked)
+		if (hdmi_valid)
 			hdmi_clk_counter <= hdmi_clk_counter + 1;
 		else
 			hdmi_clk_counter <= 0;
@@ -594,7 +294,7 @@ module top(
 
 	always @(posedge hdmi_bit_clk)
 	begin
-		if (hdmi_locked)
+		if (hdmi_valid)
 			hdmi_bit_counter <= hdmi_bit_counter + 1;
 		else
 			hdmi_bit_counter <= 0;
