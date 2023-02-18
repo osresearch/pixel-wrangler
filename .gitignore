@@ -2,3 +2,4 @@
 *.asc
 *.bin
 *.json
+.*.swp
