@@ -141,8 +141,8 @@ module top(
 
 	parameter LED_PANEL_WIDTH = 104;
 	parameter ADDR_WIDTH = 12;
-	parameter MIN_X = 45;
-	parameter MIN_Y = 85;
+	parameter MIN_X = 105;
+	parameter MIN_Y = 110;
 
 	// turn the weird linear addresses from the led matrix into
 	// frame buffer read addresses for the RAM.  note that both

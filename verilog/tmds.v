@@ -309,7 +309,6 @@ module tmds_raw_decoder(
 		.out(d0_data)
 	);
 
-`ifdef 0
 	tmds_shift_register d1_shift(
 		.bit_clk(bit_clk),
 		.in_p(d1_p),
@@ -321,10 +320,6 @@ module tmds_raw_decoder(
 		.in_p(d2_p),
 		.out(d2_data)
 	);
-`else
-	assign d1_data = 0;
-	assign d2_data = 0;
-`endif
 
 	// detect the pixel clock from the PLL'ed bit_clk
 	// only channel 0 carries the special command words

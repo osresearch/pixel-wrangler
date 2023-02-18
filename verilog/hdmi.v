@@ -149,7 +149,6 @@ module hdmi_framebuffer(
 	reg [ADDR_WIDTH-1:0] waddr;
 	reg wen = 0;
 
-`ifdef 0
 	ram #(
 		.ADDR_WIDTH(ADDR_WIDTH),
 		.DATA_WIDTH(8)
@@ -175,10 +174,6 @@ module hdmi_framebuffer(
 		.rd_addr(raddr),
 		.rd_data(g_out)
 	);
-`else
-	assign g_out = 0;
-	assign r_out = 0;
-`endif
 
 	ram #(
 		.ADDR_WIDTH(ADDR_WIDTH),
