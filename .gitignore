@@ -2,3 +2,7 @@
 *.asc
 *.bin
 *.json
+_autosave*
+*.gbr
+*-backups
+*.gbrjob
