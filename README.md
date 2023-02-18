@@ -50,12 +50,17 @@ don't have to cross on the PCB and must be flipped in the logic.
 ![Prototype on a breadboard](images/breadboard.jpg)
 
 A prototype is working on an upduino board with an HDMI breakout adapter.
-It's really surprising that it works as well as it does.
+It's really surprising that it works as well as it does.  Without EDID
+support it requires a system that allows the video mode to be forced;
+the ordered boards have the i2c lines connected and the EDID emulator
+needs to be written.
 
 
 ## Todo
 
-* [X] Finish board design
-* [ ] DDR on input for slower clock
+* [X] Finish board design -- ordered!
+* [ ] EDID ROM
+* [ ] DDR on input for high-res inputs
+* [ ] Documentation on writing new interfaces
 * [ ] Classic Mac mode
 * [ ] LED strip mode

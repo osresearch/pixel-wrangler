@@ -3,3 +3,8 @@
 *.bin
 *.json
 .*.swp
+_autosave*
+*.gbr
+*-backups
+*.gbrjob
+*auto_saved*
