@@ -18,7 +18,7 @@ module ram(
 	reg [DATA_WIDTH-1:0] rd_data;
 
         //initial $readmemh("packed0.hex", mem);
-        //initial $readmemh("fb-init.hex", mem);
+        initial $readmemh("fb-init.hex", mem);
 
 	always @(posedge rd_clk)
 		rd_data <= mem[rd_addr];

@@ -15,6 +15,7 @@
  * Only Channel 0 (Blue) has the synchronization bits and the
  * TERC4 data during the data island period.
  */
+`include "hdmi_pll.v"
 
 module tmds_8b10b_decoder(
 	input clk,
@@ -300,6 +301,7 @@ module tmds_raw_decoder(
 		.out(d0_data)
 	);
 
+`ifdef 0
 	tmds_shift_register d1_shift(
 		.bit_clk(bit_clk),
 		.in_p(d1_p),
@@ -311,6 +313,10 @@ module tmds_raw_decoder(
 		.in_p(d2_p),
 		.out(d2_data)
 	);
+`else
+	assign d1_data = 0;
+	assign d2_data = 0;
+`endif
 
 	// detect the pixel clock from the PLL'ed bit_clk
 	// only channel 0 carries the special command words
@@ -365,8 +371,7 @@ module tmds_decoder(
 
 	// these hold value so sync_valid is not necessary
 	output sync_valid,
-	output hsync,
-	output vsync,
+	output [1:0] sync,
 
 	// terc4 data is not used yet
 	output ctrl_valid,
@@ -380,7 +385,9 @@ module tmds_decoder(
 
 	wire hdmi_locked; // good clock?
 	wire hdmi_valid; // good decode?
-	wire locked = hdmi_locked && hdmi_valid;
+
+	// both clock sync and decode sync
+	assign locked = hdmi_locked && hdmi_valid;
 
 	tmds_raw_decoder tmds_raw_i(
 		// physical inputs
@@ -403,7 +410,7 @@ module tmds_decoder(
 		.clk(clk),
 		.in(tmds_d0),
 		.data(d0),
-		.sync({vsync,hsync}),
+		.sync(sync),
 		.ctrl(ctrl),
 		.data_valid(data_valid),
 		.sync_valid(sync_valid),
@@ -422,5 +429,4 @@ module tmds_decoder(
 		.in(tmds_d2),
 		.data(d2),
 	);
-
 endmodule
