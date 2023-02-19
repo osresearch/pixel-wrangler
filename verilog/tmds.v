@@ -140,7 +140,7 @@ module tmds_shift_register_ddr(
 	reg in1_0;
 	reg in0_0;
 
-	// if we copy the negedge bit we have less routing time?
+	// if we copy the negedge bit we spend less routing time?
 	always @(negedge bit_clk)
 		in1_0 <= in1;
 
@@ -180,7 +180,7 @@ module tmds_sync_recognizer(
 	input clk,
 	input [9:0] in,
 	output valid,
-	output [3:0] phase
+	output [2:0] phase
 );
 	//parameter CTRL_00 = 10'b1101010100; // 354
 	//parameter CTRL_01 = 10'b0010101011; // 0AB
@@ -189,7 +189,7 @@ module tmds_sync_recognizer(
 	parameter DELAY_BITS = 18;
 
 	reg valid;
-	reg [3:0] phase = 0;
+	reg [2:0] phase = 0;
 	reg [DELAY_BITS:0] counter;
 
 	always @(posedge clk)
@@ -205,7 +205,7 @@ module tmds_sync_recognizer(
 		if (counter[DELAY_BITS])
 		begin
 			// no recent control word! adjust the phase
-			if (phase == 4'h9)
+			if (phase == 4'h4)
 				phase <= 0;
 			else
 				phase <= phase + 1;
@@ -220,7 +220,7 @@ endmodule
 module tmds_clock_cross(
 	input clk,
 	input bit_clk,
-	input [3:0] phase,
+	input [2:0] phase,
 	input [9:0] d0_data,
 	input [9:0] d1_data,
 	input [9:0] d2_data,
@@ -229,13 +229,13 @@ module tmds_clock_cross(
 	output [9:0] d2
 );
 	reg wen;
-	reg [3:0] bit_counter = 0;
+	reg [2:0] bit_counter = 0;
 
 	always @(posedge bit_clk)
 	begin
 		wen <= bit_counter == phase;
 
-		if (bit_counter == 4'h9)
+		if (bit_counter == 4'h4)
 			bit_counter <= 0;
 		else
 			bit_counter <= bit_counter + 1;
@@ -323,7 +323,8 @@ module tmds_raw_decoder(
 
 	// detect the pixel clock from the PLL'ed bit_clk
 	// only channel 0 carries the special command words
-	wire [3:0] phase;
+	// with DDR we only count up to 5 so three bits is enough
+	wire [2:0] phase;
 
 	tmds_sync_recognizer d0_sync_recognizer(
 		.clk(clk),
