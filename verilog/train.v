@@ -34,6 +34,7 @@
 `include "tmds.v"
 `include "hdmi.v"
 `include "uart.v"
+`include "i2c.v"
 
 module top(
 	output serial_txd,
@@ -46,6 +47,7 @@ module top(
 	// debug output
 	output gpio_28,
 	output gpio_2,
+	output gpio_46,
 
 	// hdmi clock 
 	input gpio_37, // pair input gpio_4,
@@ -54,6 +56,10 @@ module top(
 	input gpio_43, // pair input gpio_36,
 	input gpio_42, // pair input gpio_38,
 	input gpio_26, // pair input gpio_27
+
+	// hdmi i2c interface
+	input gpio_23, // SCL
+	inout gpio_25, // SDA
 
 	// two LED panels
 	output gpio_12,
@@ -73,7 +79,7 @@ module top(
 	wire clk_48mhz;
 	SB_HFOSC inthosc(.CLKHFPU(1'b1), .CLKHFEN(1'b1), .CLKHF(clk_48mhz));
 	//wire clk = clk_48mhz;
-	reg [4:0] counter;
+	reg [38:0] counter;
 	reg clk = counter[2];
 	always @(posedge clk_48mhz)
 		counter <= counter + 1;
@@ -88,6 +94,7 @@ module top(
 	assign panel_a3 = 0;
 
 	wire hdmi_clk;
+	wire hdmi_bit_clk;
 	wire hdmi_valid;
 
 	wire data_valid;
@@ -104,15 +111,19 @@ module top(
 	wire [11:0] hdmi_xaddr;
 	wire [11:0] hdmi_yaddr;
 
+	reg [7:0] pll_delay = 0;
+
 	tmds_decoder tmds_decoder_i(
 		// physical inputs
 		.clk_p(gpio_37),
 		.d0_p(gpio_42),
 		.d1_p(gpio_43),
 		.d2_p(gpio_26),
+		.pll_delay(pll_delay),
 
 		// outputs
 		.clk(hdmi_clk),
+		.bit_clk(hdmi_bit_clk),
 		.locked(hdmi_valid),
 		.sync(hdmi_sync),
 		.d0(d0),
@@ -253,6 +264,56 @@ module top(
 		//.data_addr(read_addr)
 	);
 
+	// EDID interface
+	wire sda_pin = gpio_25;
+	wire scl_pin = gpio_23;
+	wire sda_out;
+	wire sda_in;
+	wire sda_enable;
+
+	assign gpio_2 = scl_pin;
+	assign gpio_28 = sda_in;
+	assign gpio_46 = sda_enable;
+
+/*
+	wire uart_txd_strobe;
+	wire [7:0] uart_txd;
+	uart uart_i(
+		.clk_48mhz(clk_48mhz),
+		.clk(clk),
+		.reset(reset),
+		.serial_txd(serial_txd),
+		.uart_txd(uart_txd),
+		.uart_txd_strobe(uart_txd_strobe)
+	);
+*/
+
+	tristate scl(
+		.pin(sda_pin),
+		.enable(sda_enable),
+		.data_out(sda_out),
+		.data_in(sda_in)
+	);
+	reg [7:0] edid[0:255];
+	reg [7:0] edid_data;
+	wire [7:0] edid_read_addr;
+	initial $readmemh("edid.hex", edid);
+	always @(posedge clk)
+		edid_data <= edid[edid_read_addr];
+
+	i2c_device i2c_i(
+		.clk(clk),
+		.reset(reset),
+		.scl_in(scl_pin),
+		.sda_in(sda_in),
+		.sda_out(sda_out),
+		.sda_enable(sda_enable),
+
+		// we only implement reads
+		.data_addr(edid_read_addr),
+		.rd_data(edid[edid_read_addr])
+	);
+
 	reg [7:0] bright_r;
 	reg [7:0] bright_g;
 	reg [7:0] bright_b = 0;
@@ -260,7 +321,22 @@ module top(
 	pwm pwm_g(clk, led_g, bright_g);
 	pwm pwm_b(clk, led_b, bright_b);
 
-	reg gpio_2, gpio_28;
+	//reg gpio_2, gpio_28;
+	//assign gpio_2 = hdmi_clk;
+	//assign gpio_28 = hdmi_bit_clk;
+/*
+	reg [4:0] hdmi_clk_div;
+	reg [4:0] hdmi_bit_clk_div;
+	assign gpio_2 = hdmi_clk_div[4];
+	assign gpio_28 = hdmi_bit_clk_div[4];
+	always @(posedge hdmi_clk) hdmi_clk_div <= hdmi_clk_div + 1;
+	always @(posedge hdmi_bit_clk) hdmi_bit_clk_div <= hdmi_bit_clk_div + 1;
+
+	always @(posedge counter[38])
+	begin
+		pll_delay[7:0] <= pll_delay[7:0] + 1;
+	end
+*/
 
 	always @(posedge hdmi_clk)
 	begin
@@ -273,8 +349,8 @@ module top(
 			bright_r <= 20;
 		end
 
-		gpio_2 <= vsync;
-		gpio_28 <= hsync;
+		//gpio_2 <= vsync;
+		//gpio_28 <= hsync;
 	end
 endmodule
 
@@ -287,6 +363,23 @@ module pwm(input clk, output pin, input [7:0] bright);
 		pin <= bright < counter; // inverted
 	end
 endmodule
+
+module tristate(
+	inout pin,
+	input enable,
+	input data_out,
+	output data_in
+);
+	SB_IO #(
+		.PIN_TYPE(6'b1010_01) // tristatable output
+	) buffer(
+		.PACKAGE_PIN(pin),
+		.OUTPUT_ENABLE(enable),
+		.D_IN_0(data_in),
+		.D_OUT_0(data_out)
+	);
+endmodule
+
 
 
 // for speed of receiving the HDMI signals, the framebuffer is stored in
