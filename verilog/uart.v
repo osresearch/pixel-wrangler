@@ -181,3 +181,43 @@ module uart_rx(mclk, reset, baud_x4,
      end
 
 endmodule
+
+module uart(
+	input clk_48mhz,
+	input clk,
+	input reset,
+	input serial_rxd,
+	output serial_txd,
+	input [7:0] uart_txd,
+	input uart_txd_strobe,
+	output uart_txd_ready,
+	output [7:0] uart_rxd,
+	output uart_rxd_strobe
+);
+	// generate a 3 MHz/12 MHz serial clock from the 48 MHz clock
+	// this is the 3 Mb/s maximum supported by the FTDI chip
+	reg [3:0] baud_clk;
+	always @(posedge clk_48mhz)
+		baud_clk <= baud_clk + 1;
+
+	wire uart_txd_ready;
+
+	uart_rx rxd(
+		.mclk(clk),
+		.reset(reset),
+		.baud_x4(baud_clk[1]), // 48 MHz / 4 == 12 Mhz
+		.serial(serial_rxd),
+		.data(uart_rxd),
+		.data_strobe(uart_rxd_strobe)
+	);
+
+	uart_tx txd(
+		.mclk(clk),
+		.reset(reset),
+		.baud_x1(baud_clk[3]), // 48 MHz / 16 == 3 Mhz
+		.serial(serial_txd),
+		.ready(uart_txd_ready),
+		.data(uart_txd),
+		.data_strobe(uart_txd_strobe)
+	);
+endmodule
