@@ -112,7 +112,22 @@ module top(
 	wire [11:0] hdmi_xaddr;
 	wire [11:0] hdmi_yaddr;
 
+	reg hdmi_reset = 0;
+	reg [20:0] invalid_counter = 0;
+	always @(posedge clk)
+	begin
+		if (!hdmi_valid)
+			invalid_counter <= invalid_counter + 1;
+		else
+			invalid_counter <= invalid_counter == 0 ? 0 : invalid_counter - 1;
+
+		hdmi_reset <= invalid_counter[20];
+		led_b <= !hdmi_reset;
+	end
+
 	tmds_decoder tmds_decoder_i(
+		.reset(hdmi_reset),
+
 		// physical inputs
 		.clk_p(gpio_37),
 		.d0_p(gpio_42),
@@ -153,8 +168,7 @@ module top(
 	parameter LED_PANEL_WIDTH = 104;
 	parameter ADDR_WIDTH = 12;
 	parameter MIN_X = 50;
-	//parameter MIN_Y = 480; // we aren't doing overscan correctly
-	parameter MIN_Y = 100; // we aren't doing overscan correctly
+	parameter MIN_Y = 110; // we aren't doing overscan correctly
 
 	// turn the weird linear addresses from the led matrix into
 	// frame buffer read addresses for the RAM.  note that both
@@ -315,10 +329,10 @@ module top(
 
 	reg [7:0] bright_r;
 	reg [7:0] bright_g;
-	reg [7:0] bright_b = 0;
+	reg [7:0] bright_b;
 	pwm pwm_r(clk, led_r, bright_r);
 	pwm pwm_g(clk, led_g, bright_g);
-	pwm pwm_b(clk, led_b, bright_b);
+	//pwm pwm_b(clk, led_b, bright_b);
 
 	//reg gpio_2, gpio_28;
 	assign gpio_2 = hdmi_locked;

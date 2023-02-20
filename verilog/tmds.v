@@ -180,6 +180,7 @@ endmodule
 // to resync our bit clock offset from the pixel clock.
 // tracks if our clock is still in sync with the old values
 module tmds_sync_recognizer(
+	input reset,
 	input hdmi_clk,
 	input [9:0] in,
 	output valid,
@@ -195,10 +196,13 @@ module tmds_sync_recognizer(
 	reg [2:0] phase = 0;
 	reg [DELAY_BITS:0] counter;
 
-	always @(posedge hdmi_clk)
+	always @(posedge reset or posedge hdmi_clk)
 	begin
-		counter <= counter + 1;
-
+		if (reset)
+		begin
+			counter <= 0;
+			valid <= 0;
+		end else
 		if (in == CTRL_11)
 		begin
 			// we have a good control word!
@@ -215,12 +219,16 @@ module tmds_sync_recognizer(
 
 			valid <= 0;
 			counter <= 0;
+		end else begin
+			// keep counting until we have another valid signal
+			counter <= counter + 1;
 		end
 	end
 endmodule
 
 
 module tmds_clock_cross(
+	input reset,
 	input clk,
 	input bit_clk,
 	input [2:0] phase,
@@ -234,8 +242,12 @@ module tmds_clock_cross(
 	reg wen;
 	reg [2:0] bit_counter = 0;
 
-	always @(posedge bit_clk)
+	always @(posedge reset or posedge bit_clk)
+	if (reset)
 	begin
+		bit_counter <= 0;
+		wen <= 0;
+	end else begin
 		wen <= bit_counter == phase;
 
 		if (bit_counter == 4'h4)
@@ -266,6 +278,8 @@ endmodule
 // and a TMDS synchronize clock for the data stream.  The data are only valid
 // when locked
 module tmds_raw_decoder(
+	input reset,
+
 	input d0_p,
 	input d1_p,
 	input d2_p,
@@ -298,7 +312,8 @@ module tmds_raw_decoder(
 	hdmi_pll pll(
 		.clock_in(hdmi_clk),
 		.clock_out(bit_clk),
-		.locked(hdmi_locked)
+		.locked(hdmi_locked),
+		.reset(reset)
 	);
 
 	// bit_clk domain
@@ -330,6 +345,7 @@ module tmds_raw_decoder(
 	wire [2:0] phase;
 
 	tmds_sync_recognizer d0_sync_recognizer(
+		.reset(reset),
 		.hdmi_clk(hdmi_clk),
 		.in(d0),
 		.phase(phase),
@@ -338,6 +354,7 @@ module tmds_raw_decoder(
 
 	// cross the data words from bit_clk to clk domain
 	tmds_clock_cross crosser(
+		.reset(reset),
 		.clk(hdmi_clk),
 		.bit_clk(bit_clk),
 		.phase(phase),
@@ -356,6 +373,8 @@ module tmds_raw_decoder(
 endmodule
 
 module tmds_decoder(
+	input reset,
+
 	// the differential pair inputs only take the positive pin
 	// otherwise nextpnr gets upset!
 	input clk_p,
@@ -395,6 +414,8 @@ module tmds_decoder(
 	wire hdmi_valid; // good decode?
 
 	tmds_raw_decoder tmds_raw_i(
+		.reset(reset),
+
 		// physical inputs
 		.clk_p(clk_p),
 		.d0_p(d0_p),
