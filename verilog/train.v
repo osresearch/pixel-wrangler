@@ -80,7 +80,7 @@ module top(
 	SB_HFOSC inthosc(.CLKHFPU(1'b1), .CLKHFEN(1'b1), .CLKHF(clk_48mhz));
 	//wire clk = clk_48mhz;
 	reg [38:0] counter;
-	reg clk = counter[2];
+	reg clk = counter[1];
 	always @(posedge clk_48mhz)
 		counter <= counter + 1;
 
@@ -96,6 +96,7 @@ module top(
 	wire hdmi_clk;
 	wire hdmi_bit_clk;
 	wire hdmi_valid;
+	wire hdmi_locked;
 
 	wire data_valid;
 	wire [7:0] d0;
@@ -111,20 +112,18 @@ module top(
 	wire [11:0] hdmi_xaddr;
 	wire [11:0] hdmi_yaddr;
 
-	reg [7:0] pll_delay = 0;
-
 	tmds_decoder tmds_decoder_i(
 		// physical inputs
 		.clk_p(gpio_37),
 		.d0_p(gpio_42),
 		.d1_p(gpio_43),
 		.d2_p(gpio_26),
-		.pll_delay(pll_delay),
 
 		// outputs
-		.clk(hdmi_clk),
+		.hdmi_clk(hdmi_clk),
 		.bit_clk(hdmi_bit_clk),
-		.locked(hdmi_valid),
+		.hdmi_valid(hdmi_valid),
+		.hdmi_locked(hdmi_locked),
 		.sync(hdmi_sync),
 		.d0(d0),
 		.d1(d1),
@@ -271,9 +270,9 @@ module top(
 	wire sda_in;
 	wire sda_enable;
 
-	assign gpio_2 = scl_pin;
-	assign gpio_28 = sda_in;
-	assign gpio_46 = sda_enable;
+	//assign gpio_2 = scl_pin;
+	//assign gpio_28 = sda_in;
+	//assign gpio_46 = sda_enable;
 
 /*
 	wire uart_txd_strobe;
@@ -322,21 +321,9 @@ module top(
 	pwm pwm_b(clk, led_b, bright_b);
 
 	//reg gpio_2, gpio_28;
-	//assign gpio_2 = hdmi_clk;
-	//assign gpio_28 = hdmi_bit_clk;
-/*
-	reg [4:0] hdmi_clk_div;
-	reg [4:0] hdmi_bit_clk_div;
-	assign gpio_2 = hdmi_clk_div[4];
-	assign gpio_28 = hdmi_bit_clk_div[4];
-	always @(posedge hdmi_clk) hdmi_clk_div <= hdmi_clk_div + 1;
-	always @(posedge hdmi_bit_clk) hdmi_bit_clk_div <= hdmi_bit_clk_div + 1;
-
-	always @(posedge counter[38])
-	begin
-		pll_delay[7:0] <= pll_delay[7:0] + 1;
-	end
-*/
+	assign gpio_2 = hdmi_locked;
+	assign gpio_28 = hdmi_valid;
+	assign gpio_46 = vsync;
 
 	always @(posedge hdmi_clk)
 	begin
@@ -348,9 +335,6 @@ module top(
 			bright_g <= 0;
 			bright_r <= 20;
 		end
-
-		//gpio_2 <= vsync;
-		//gpio_28 <= hsync;
 	end
 endmodule
 

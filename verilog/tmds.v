@@ -12,13 +12,15 @@
 
 /*
  * Decode the TMDS and TERC4 encoded data in the HDMI stream.
+ * This processes pixels in the HDMI TMDS clock domain.
+ *
  * Only Channel 0 (Blue) has the synchronization bits and the
  * TERC4 data during the data island period.
  */
 `include "hdmi_pll_ddr.v"
 
 module tmds_8b10b_decoder(
-	input clk,
+	input hdmi_clk,
 	input [9:0] in,
 	output data_valid,
 	output sync_valid,
@@ -69,7 +71,7 @@ module tmds_8b10b_decoder(
 	reg [1:0] sync;
 	reg [3:0] ctrl;
 
-	always @(posedge clk)
+	always @(posedge hdmi_clk)
 	begin
 		sync_valid <= 0;
 		ctrl_valid <= 0;
@@ -174,10 +176,11 @@ module tmds_shift_register(
 		out <= { in0, out[BITS-1:1] };
 endmodule
 
-// detect a control messgae in the shift register and use it to resync our pixel clock
+// detect a control message in the shift register and use it
+// to resync our bit clock offset from the pixel clock.
 // tracks if our clock is still in sync with the old values
 module tmds_sync_recognizer(
-	input clk,
+	input hdmi_clk,
 	input [9:0] in,
 	output valid,
 	output [2:0] phase
@@ -192,7 +195,7 @@ module tmds_sync_recognizer(
 	reg [2:0] phase = 0;
 	reg [DELAY_BITS:0] counter;
 
-	always @(posedge clk)
+	always @(posedge hdmi_clk)
 	begin
 		counter <= counter + 1;
 
@@ -274,10 +277,10 @@ module tmds_raw_decoder(
 	output [9:0] d2,
 	output valid, // good pixel data
 	output locked, // only timing data
-	output clk,
+	output hdmi_clk,
 	output bit_clk
 );
-	wire clk; // 25 MHz decoded from TDMS input
+	wire hdmi_clk; // 25 MHz decoded from TDMS input
 	wire bit_clk; // 250 MHz PLL'ed from TMDS clock (or 125 MHz if DDR)
 	reg pixel_strobe, pixel_valid; // when new pixels are detected by the synchronizer
 	wire hdmi_locked;
@@ -289,11 +292,11 @@ module tmds_raw_decoder(
 		.IO_STANDARD("SB_LVDS_INPUT")
 	) differential_clock_input (
 		.PACKAGE_PIN(clk_p),
-		.GLOBAL_BUFFER_OUTPUT(clk)
+		.GLOBAL_BUFFER_OUTPUT(hdmi_clk)
 	);
 
 	hdmi_pll pll(
-		.clock_in(clk),
+		.clock_in(hdmi_clk),
 		.clock_out(bit_clk),
 		.locked(hdmi_locked)
 	);
@@ -327,7 +330,7 @@ module tmds_raw_decoder(
 	wire [2:0] phase;
 
 	tmds_sync_recognizer d0_sync_recognizer(
-		.clk(clk),
+		.hdmi_clk(hdmi_clk),
 		.in(d0),
 		.phase(phase),
 		.valid(pixel_valid)
@@ -335,7 +338,7 @@ module tmds_raw_decoder(
 
 	// cross the data words from bit_clk to clk domain
 	tmds_clock_cross crosser(
-		.clk(clk),
+		.clk(hdmi_clk),
 		.bit_clk(bit_clk),
 		.phase(phase),
 		.d0_data(d0_data),
@@ -346,7 +349,7 @@ module tmds_raw_decoder(
 		.d2(d2)
 	);
 
-	always @(posedge clk)
+	always @(posedge hdmi_clk)
 	begin
 		valid <= hdmi_locked && pixel_valid;
 	end
@@ -361,11 +364,12 @@ module tmds_decoder(
 	input d2_p,
 
 	// hdmi pixel clock and PLL'ed bit clock
-	output clk,
+	output hdmi_clk,
 	output bit_clk,
 
 	// clock sync and data decode is good
-	output locked,
+	output hdmi_locked, // good clock
+	output hdmi_valid, // good sync
 
 	// data valid should be based on sync pulses, so ignore it for now
 	output data_valid,
@@ -384,14 +388,11 @@ module tmds_decoder(
 	wire [9:0] tmds_d0;
 	wire [9:0] tmds_d1;
 	wire [9:0] tmds_d2;
-	wire clk; // hdmi pixel clock domain, sync'ed to the TMDS clock
+	wire hdmi_clk; // hdmi pixel clock domain, sync'ed to the TMDS clock
 	wire bit_clk; // PLL'ed from the pixel clock
 
 	wire hdmi_locked; // good clock?
 	wire hdmi_valid; // good decode?
-
-	// both clock sync and decode sync
-	assign locked = hdmi_locked && hdmi_valid;
 
 	tmds_raw_decoder tmds_raw_i(
 		// physical inputs
@@ -401,7 +402,7 @@ module tmds_decoder(
 		.d2_p(d2_p),
 
 		// outputs
-		.clk(clk),
+		.hdmi_clk(hdmi_clk),
 		.bit_clk(bit_clk),
 		.locked(hdmi_locked),
 		.valid(hdmi_valid),
@@ -411,7 +412,7 @@ module tmds_decoder(
 	);
 
 	tmds_8b10b_decoder d0_decoder(
-		.clk(clk),
+		.hdmi_clk(hdmi_clk),
 		.in(tmds_d0),
 		.data(d0),
 		.sync(sync),
@@ -423,13 +424,13 @@ module tmds_decoder(
 
 	// audio data is on d1 and d2, but we don't handle it yet
 	tmds_8b10b_decoder d1_decoder(
-		.clk(clk),
+		.hdmi_clk(hdmi_clk),
 		.in(tmds_d1),
 		.data(d1),
 	);
 
 	tmds_8b10b_decoder d2_decoder(
-		.clk(clk),
+		.hdmi_clk(hdmi_clk),
 		.in(tmds_d2),
 		.data(d2),
 	);
