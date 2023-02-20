@@ -197,6 +197,9 @@ begin
 		// let the controller send us a ~ACK / NAK on the 9th clock
 		sda_enable <= 0;
 		state <= READ_ACK;
+
+		// start the read of the next byte
+		data_addr <= data_addr + 1;
 	end
 	if (state == READ_ACK && scl_rising)
 	begin
@@ -205,9 +208,9 @@ begin
 			// they NAK'ed us, so we go back to idle
 			state <= IDLE;
 		end else begin
-			// they want more. read the next byte and advance the read address
+			// they want more.
+			// the next byte should be ready now
 			shift_reg <= rd_data;
-			data_addr <= data_addr + 1;
 			state <= READ_DATA;
 			bit_counter <= 0;
 		end
