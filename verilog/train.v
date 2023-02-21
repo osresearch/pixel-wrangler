@@ -1,170 +1,54 @@
 /*
  * HDMI interface for the NS Train display.
  *
- * This uses the decoded data from the tmds_decoder to
- * produce pixels. It can either write them into a frame
- * buffer, or make them available as a streaming interface
- * in the hdmi_clk domain.
- *
- * Requires a 5x or 10x PLL from the pixel clock.
- * Clock input should use a global buffer input
- * -- app note says " Global Buffer Input 7 (GBIN7) is the only one that supports differential clock inputs."
- * -- but experimentally only 37 works.
- *
- * Pair Inputs must use negative pin of differential pairs.
- * The positive pin *must not be mentioned* as an input.
- *
- * The bit clock and pixel clock have a constant, but unknown phase.
- * We should have a "tracking" function that tries to ensure it lines up.
- *
- * https://www.analog.com/en/design-notes/video-display-signals-and-the-max9406-dphdmidvi-level-shifter8212part-i.html
- * V+H sync and audio header on Blue (D0)
- * Audio data on Red and Green
- * Data island period is encoded with TERC4; can we ignore it?
- *
- * sync pulses are active low
- * H sync keeps pulsing while V is low (twice)
- * V sync is 63 usec, every 60 Hz
- * H sync is 4 usec, every 32 usec
- *
- * 640x480 frame is actually sent as an 800x525 frame.
- * hbi goes 80 into X, vbi goes 22 into y
+ * This uses the HDMI streaming interface to populate two
+ * block RAM framebuffers that are then clocked out on the GPIO
+ * pins of the pixel wrangler.
  */
 `default_nettype none
-`include "tmds.v"
-`include "hdmi.v"
-`include "uart.v"
-`include "pwm.v"
-`include "i2c.v"
+`define WRANGLER_LED
+`include "top.v"
 
-module top(
-	output serial_txd,
-	input serial_rxd,
-	output spi_cs,
-	output led_r,
-	output led_g,
-	output led_b,
+module display(
+	input clk_48mhz,
+	input clk, // system clock, probably 12 or 24 Mhz
 
-	// debug output
-	output gpio_28,
-	output gpio_2,
-	output gpio_46,
+	// Streaming HDMI interface (in 25 MHz hdmi_clk domain)
+	input hdmi_clk,
+	input hdmi_valid,
+	input vsync,
+	input hsync,
+	input rgb_valid,
+	input [7:0] r,
+	input [7:0] g,
+	input [7:0] b,
+	input [11:0] hdmi_xaddr,
+	input [11:0] hdmi_yaddr,
 
-	// hdmi clock 
-	input gpio_37, // pair input gpio_4,
+	// GPIO banks for output
+	output [7:0] gpio_bank_0,
+	output [7:0] gpio_bank_1,
 
-	// hdmi pairs 36/43, 38/42, 26/27
-	input gpio_43, // pair input gpio_36,
-	input gpio_42, // pair input gpio_38,
-	input gpio_26, // pair input gpio_27
-
-	// hdmi i2c interface
-	input gpio_23, // SCL
-	inout gpio_25, // SDA
-
-	// two LED panels
-	output gpio_12,
-	output gpio_21,
-	output gpio_13,
-	output gpio_19,
-	output gpio_18,
-	output gpio_11,
-	output gpio_9,
-	output gpio_6,
-	output gpio_44
+	// RGB led on the board with PWM
+	output [7:0] led_r,
+	output [7:0] led_g,
+	output [7:0] led_b
 );
-	assign spi_cs = 1; // it is necessary to turn off the SPI flash chip
-	//reg led_r, led_g, led_b;
+	wire reset = 0;
 
-	reg reset = 0;
-	wire clk_48mhz;
-	SB_HFOSC inthosc(.CLKHFPU(1'b1), .CLKHFEN(1'b1), .CLKHF(clk_48mhz));
-	//wire clk = clk_48mhz;
-	reg [38:0] counter;
-	reg clk = counter[1];
-	always @(posedge clk_48mhz)
-		counter <= counter + 1;
-
-	wire panel_data1 = gpio_12;
-	wire panel_latch = gpio_21;
-	wire panel_clk = gpio_13;
-	wire panel_en = gpio_19;
-	wire panel_a3 = gpio_18;
-	wire [2:0] panel_addr = { gpio_11, gpio_9, gpio_6 };
-	wire panel_data0 = gpio_44;
+	wire panel_data1 = gpio_bank_0[7]; // gpio_12;
+	wire panel_latch = gpio_bank_0[6]; // gpio_21;
+	wire panel_clk = gpio_bank_0[5]; // gpio_13;
+	wire panel_en = gpio_bank_0[4]; // gpio_19;
+	wire panel_a3 = gpio_bank_0[3]; // gpio_18;
+	wire [2:0] panel_addr = { gpio_bank_0[2:0] }; // { gpio_11, gpio_9, gpio_6 };
+	wire panel_data0 = gpio_bank_1[3]; // gpio_44;
 	assign panel_a3 = 0;
 
-	wire hdmi_clk;
-	wire hdmi_bit_clk;
-	wire hdmi_valid;
-	wire hdmi_locked;
-
-	wire data_valid;
-	wire [7:0] d0;
-	wire [7:0] d1;
-	wire [7:0] d2;
-
-	wire [1:0] hdmi_sync;
-	wire hsync, vsync;
-	wire rgb_valid;
-	wire [7:0] r;
-	wire [7:0] g;
-	wire [7:0] b;
-	wire [11:0] hdmi_xaddr;
-	wire [11:0] hdmi_yaddr;
-
-	reg hdmi_reset = 0;
-	reg [20:0] invalid_counter = 0;
-	always @(posedge clk)
-	begin
-		if (!hdmi_valid)
-			invalid_counter <= invalid_counter + 1;
-		else
-			invalid_counter <= invalid_counter == 0 ? 0 : invalid_counter - 1;
-
-		hdmi_reset <= invalid_counter[20];
-		//led_b <= !hdmi_reset;
-	end
-
-	tmds_decoder tmds_decoder_i(
-		.reset(hdmi_reset),
-
-		// physical inputs
-		.clk_p(gpio_37),
-		.d0_p(gpio_42),
-		.d1_p(gpio_43),
-		.d2_p(gpio_26),
-
-		// outputs
-		.hdmi_clk(hdmi_clk),
-		.bit_clk(hdmi_bit_clk),
-		.hdmi_valid(hdmi_valid),
-		.hdmi_locked(hdmi_locked),
-		.sync(hdmi_sync),
-		.d0(d0),
-		.d1(d1),
-		.d2(d2),
-		.data_valid(data_valid)
-	);
-
-	hdmi_stream hdmi_s(
-		// inputs
-		.clk(hdmi_clk),
-		.valid(hdmi_valid),
-		.sync(hdmi_sync),
-		.d0(d0),
-		.d1(d1),
-		.d2(d2),
-		// outputs
-		.xaddr(hdmi_xaddr),
-		.yaddr(hdmi_yaddr),
-		.vsync(vsync),
-		.hsync(hsync),
-		.rgb_valid(rgb_valid),
-		.r(r),
-		.g(g),
-		.b(b)
-	);
+	// for debug output the sync signals on the gpio
+	assign gpio_bank_1[0] = vsync;
+	assign gpio_bank_1[1] = hsync;
+	assign gpio_bank_1[2] = hdmi_valid;
 
 	parameter LED_PANEL_WIDTH = 104;
 	parameter ADDR_WIDTH = 12;
@@ -278,110 +162,14 @@ module top(
 		//.data_addr(read_addr)
 	);
 
-	// EDID interface
-	wire sda_pin = gpio_25;
-	wire scl_pin = gpio_23;
-	wire sda_out;
-	wire sda_in;
-	wire sda_enable;
-
-	//assign gpio_2 = scl_pin;
-	//assign gpio_28 = sda_in;
-	//assign gpio_46 = sda_enable;
-
-/*
-	wire uart_txd_strobe;
-	wire [7:0] uart_txd;
-	uart uart_i(
-		.clk_48mhz(clk_48mhz),
-		.clk(clk),
-		.reset(reset),
-		.serial_txd(serial_txd),
-		.uart_txd(uart_txd),
-		.uart_txd_strobe(uart_txd_strobe)
-	);
-*/
-
-	tristate scl(
-		.pin(sda_pin),
-		.enable(sda_enable),
-		.data_out(sda_out),
-		.data_in(sda_in)
-	);
-	reg [7:0] edid[0:255];
-	reg [7:0] edid_data;
-	wire [7:0] edid_read_addr;
-	initial $readmemh("edid.hex", edid);
-	always @(posedge clk)
-		edid_data <= edid[edid_read_addr];
-
-	i2c_device i2c_i(
-		.clk(clk),
-		.reset(reset),
-		.scl_in(scl_pin),
-		.sda_in(sda_in),
-		.sda_out(sda_out),
-		.sda_enable(sda_enable),
-
-		// we only implement reads
-		.data_addr(edid_read_addr),
-		.rd_data(edid[edid_read_addr])
-	);
-
+	// pulse the RGB led. should do something with state here
 	wire [7:0] rate_r = 8'h0F;
 	wire [7:0] rate_g = 8'h1F;
 	wire [7:0] rate_b = 8'h3F;
 
-	wire [7:0] bright_r;
-	wire [7:0] bright_g;
-	wire [7:0] bright_b;
-	breath breath_r(clk, rate_r, bright_r);
-	breath breath_g(clk, rate_g, bright_g);
-	breath breath_b(clk, rate_b, bright_b);
-
-	rgb_drv rgb_drv_i(
-		.clk(clk),
-		.enable(1),
-		.out({led_r,led_g,led_b}),
-		.bright_r(bright_r),
-		.bright_g(bright_g),
-		.bright_b(bright_b)
-	);
-
-	//reg gpio_2, gpio_28;
-	assign gpio_2 = hdmi_locked;
-	assign gpio_28 = hdmi_valid;
-	assign gpio_46 = vsync;
-
-	always @(posedge hdmi_clk)
-	begin
-/*
-		if (hdmi_valid)
-		begin
-			bright_g <= 20;
-			bright_r <= 0;
-		end else begin
-			bright_g <= 0;
-			bright_r <= 20;
-		end
-*/
-	end
-endmodule
-
-module tristate(
-	inout pin,
-	input enable,
-	input data_out,
-	output data_in
-);
-	SB_IO #(
-		.PIN_TYPE(6'b1010_01) // tristatable output
-	) buffer(
-		.PACKAGE_PIN(pin),
-		.OUTPUT_ENABLE(enable),
-		.D_IN_0(data_in),
-		.D_OUT_0(data_out)
-	);
+	breath breath_r(clk, rate_r, led_r);
+	breath breath_g(clk, rate_g, led_g);
+	breath breath_b(clk, rate_b, led_b);
 endmodule
 
 
