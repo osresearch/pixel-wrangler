@@ -34,6 +34,7 @@
 `include "tmds.v"
 `include "hdmi.v"
 `include "uart.v"
+`include "pwm.v"
 `include "i2c.v"
 
 module top(
@@ -122,7 +123,7 @@ module top(
 			invalid_counter <= invalid_counter == 0 ? 0 : invalid_counter - 1;
 
 		hdmi_reset <= invalid_counter[20];
-		led_b <= !hdmi_reset;
+		//led_b <= !hdmi_reset;
 	end
 
 	tmds_decoder tmds_decoder_i(
@@ -327,12 +328,25 @@ module top(
 		.rd_data(edid[edid_read_addr])
 	);
 
-	reg [7:0] bright_r;
-	reg [7:0] bright_g;
-	reg [7:0] bright_b;
-	pwm pwm_r(clk, led_r, bright_r);
-	pwm pwm_g(clk, led_g, bright_g);
-	//pwm pwm_b(clk, led_b, bright_b);
+	wire [7:0] rate_r = 8'h0F;
+	wire [7:0] rate_g = 8'h1F;
+	wire [7:0] rate_b = 8'h3F;
+
+	wire [7:0] bright_r;
+	wire [7:0] bright_g;
+	wire [7:0] bright_b;
+	breath breath_r(clk, rate_r, bright_r);
+	breath breath_g(clk, rate_g, bright_g);
+	breath breath_b(clk, rate_b, bright_b);
+
+	rgb_drv rgb_drv_i(
+		.clk(clk),
+		.enable(1),
+		.out({led_r,led_g,led_b}),
+		.bright_r(bright_r),
+		.bright_g(bright_g),
+		.bright_b(bright_b)
+	);
 
 	//reg gpio_2, gpio_28;
 	assign gpio_2 = hdmi_locked;
@@ -341,6 +355,7 @@ module top(
 
 	always @(posedge hdmi_clk)
 	begin
+/*
 		if (hdmi_valid)
 		begin
 			bright_g <= 20;
@@ -349,16 +364,7 @@ module top(
 			bright_g <= 0;
 			bright_r <= 20;
 		end
-	end
-endmodule
-
-module pwm(input clk, output pin, input [7:0] bright);
-	reg [7:0] counter;
-	reg pin;
-	always @(posedge clk)
-	begin
-		counter <= counter + 1;
-		pin <= bright < counter; // inverted
+*/
 	end
 endmodule
 
