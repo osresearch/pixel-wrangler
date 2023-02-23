@@ -130,7 +130,7 @@ module top(
 
 	rgb_drv rgb_drv_i(
 		.clk(clk_48mhz),
-		.enable(1),
+		.enable(1'b1),
 		.out({led_r,led_g,led_b}),
 		.bright_r(bright_r),
 		.bright_g(bright_g),
