@@ -55,12 +55,15 @@ support it requires a system that allows the video mode to be forced;
 the ordered boards have the i2c lines connected and the EDID emulator
 needs to be written.
 
+## Dithering
+
+Dithering uses Ordered Blue Noise Dithering. Pattern is from [gao-duan](https://github.com/gao-duan/BlueNoise) (MIT Licensed)
 
 ## Todo
 
 * [X] Finish board design -- ordered!
-* [ ] EDID ROM
-* [ ] DDR on input for high-res inputs
+* [X] EDID ROM
+* [X] DDR on input for ~~high-res~~ inputs
 * [ ] Documentation on writing new interfaces
-* [ ] Classic Mac mode
+* [ ] Classic Mac mode -- in progress!
 * [ ] LED strip mode
