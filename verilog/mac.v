@@ -66,8 +66,10 @@ module display(
 	wire mono_bits_ready;
 	wire mono_vsync;
 
-	// todo: window the X and Y addresses!
-	hdmi_dither dither(
+	hdmi_dither #(
+		.X_OFFSET(64),
+		.Y_OFFSET(128)
+	) dither(
 		.hdmi_clk(hdmi_clk),
 		.hdmi_valid(hdmi_valid && rgb_valid),
 		.hdmi_vsync(vsync),
@@ -90,35 +92,26 @@ module display(
 	reg [15:0] fb_bits;
 
 	reg [13:0] rd_addr;
-	reg video_bit;
+	//reg video_bit;
 
 	reg mono_bits_ready_delay = 0;
 
 	//wire reader_active = fb_xaddr[3:0] == 4'b1111;
 	reg reader_active;
 
-	// x offset must be a multiple of 16
-	parameter X_OFFSET = 64;
-	parameter Y_OFFSET = 128;
-	parameter WIDTH = 512;
-	parameter HEIGHT = 342;
-	wire [9:0] mono_xoffset = mono_xaddr - X_OFFSET;
-	wire [9:0] mono_yoffset = mono_yaddr - Y_OFFSET;
-	wire hdmi_in_window = 1
-		&& X_OFFSET <= mono_xaddr && mono_xaddr < X_OFFSET + WIDTH
-		&& Y_OFFSET <= mono_yaddr && mono_yaddr < Y_OFFSET + HEIGHT;
-
-
 	// xaddr bottom 4 bits are all zero since there are 16-bits
-	// returned at a time.  xaddr only goes to 512, so we have
-	// only a few bits worth of 
-	wire [13:0] wd_addr = { mono_yoffset[8:0], mono_xoffset[8:4] };
+	// returned at a time.  xaddr only goes to 511
+	wire [13:0] wd_addr = { mono_yaddr[8:0], mono_xaddr[8:4] };
 
 	reg fb_wen;
 
 	// every 16 pixels cache the next 16 pixels worth of data
-	wire [3:0] xaddr_low = fb_xaddr[3:0];
 	wire [15:0] rd_data;
+
+	// video comes from the read buffer on the clock immediately
+	// after a read, otherwise it comes from the shift register
+	wire video_bit = last_read_active ? rd_data[15] : fb_bits[15];
+
 	reg last_read_active;
 	always @(posedge clk_16mhz)
 	begin
@@ -126,29 +119,27 @@ module display(
 		last_read_active <= 0;
 		mono_bits_ready_delay <= 0;
 
-		if (xaddr_low == 4'b0000) begin
-			// need to read the set of data
-			// delay any writes that might be happening
-			mono_bits_ready_delay <= mono_bits_ready;
+		if (fb_xaddr[3:0] == 4'b0000) begin
+			// need to read a new set of pixels
 			last_read_active <= 1;
  			rd_addr <= { fb_yaddr[8:0], fb_xaddr[8:4] };
-		end else
-		if (hdmi_in_window) begin
+
+			// delay any writes that might be happening
+			// since reading from the frame buffer has
+			// real-time priority
+			mono_bits_ready_delay <= mono_bits_ready;
+		end else begin
 			// allow any writes or delayed writes to happen
 			// when they are in the active part of the display
+			// mono_bits_ready is only set if we're in the window
 			fb_wen <= mono_bits_ready || mono_bits_ready_delay;
 		end
 
+		// refresh the buffer from the read or shift the buffer
 		if (last_read_active)
-		begin
-			// refresh shift register from the frame buffer
-			video_bit <= rd_data[15];
-			fb_bits <= { rd_data[14:0], 1'b0 };
-		end else begin
-			// video out from the shift register
-			video_bit <= fb_bits[15];
-			fb_bits <= { fb_bits[14:0], 1'b0 };
-		end
+			fb_bits[15:0] <= { rd_data[14:0], 1'b0 };
+		else
+			fb_bits[15:0] <= { fb_bits[14:0], 1'b0 };
 	end
 
 
@@ -193,7 +184,7 @@ module mac_display(
 	parameter ACTIVE_YOFFSET = 48;
 
 	parameter TOTAL_WIDTH = 720;
-	parameter TOTAL_HEIGHT = ACTIVE_HEIGHT + ACTIVE_YOFFSET; //384;
+	parameter TOTAL_HEIGHT = ACTIVE_HEIGHT + ACTIVE_YOFFSET + 1; //384;
 	parameter VSYNC_LINES = 6; // how many hsyncs during vsync low
 	parameter VSYNC_OFFSET = 128; // edge of vsync relative to hsync
 	parameter HSYNC_OFFSET = 294; // rising edge of the hsync line
@@ -206,9 +197,15 @@ module mac_display(
 	reg [8:0] yscan;
 	wire [9:0] xaddr = xscan - ACTIVE_XOFFSET;
 	wire [8:0] yaddr = yscan - ACTIVE_YOFFSET;
+
+	// note that the "in active window" triggers one pixel
+	// *after* xscan enters it, since xaddr is a request for
+	// a pixel and it takes one clock for the framebuffer to be ready
 	wire in_active_window = 1
-		&& xaddr < ACTIVE_WIDTH
-		&& yaddr < ACTIVE_HEIGHT;
+		&& ACTIVE_XOFFSET < xscan
+		&& xscan <= ACTIVE_XOFFSET + ACTIVE_WIDTH
+		&& ACTIVE_YOFFSET < yscan
+		&& yscan <= ACTIVE_YOFFSET + ACTIVE_HEIGHT;
 
 	always @(posedge clk_16mhz)
 	if (reset)

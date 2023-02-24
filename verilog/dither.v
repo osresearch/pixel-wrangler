@@ -23,6 +23,12 @@ module hdmi_dither(
 	output mono_bits_ready,
 	output mono_vsync
 );
+	parameter DITHER_BITS = 6;
+	parameter X_OFFSET = 64;
+	parameter Y_OFFSET = 128;
+	parameter WIDTH = 512;
+	parameter HEIGHT = 342;
+
 	reg [15:0] hdmi_bits;
 	reg [15:0] mono_bits;
 
@@ -42,15 +48,26 @@ module hdmi_dither(
 		vsync_strobe(hdmi_clk, vsync_falling_edge, mono_clk, mono_vsync);
 	
 	wire dither_bit;
-	dither dither_i(
+	dither #(
+		.ADDR_BITS(DITHER_BITS)
+	) dither_i(
 		.clk(hdmi_clk),
 		.r(hdmi_r),
 		.b(hdmi_b),
 		.g(hdmi_g),
-		.x(hdmi_xaddr[4:0]),
-		.y(hdmi_yaddr[4:0]),
+		.x(hdmi_xaddr[DITHER_BITS-1:0]),
+		.y(hdmi_yaddr[DITHER_BITS-1:0]),
 		.out(dither_bit)
 	);
+
+	wire [11:0] out_xaddr = hdmi_xaddr - X_OFFSET;
+	wire [11:0] out_yaddr = hdmi_yaddr - Y_OFFSET;
+
+	wire hdmi_in_window = 1
+		&& X_OFFSET <= hdmi_xaddr && hdmi_xaddr < X_OFFSET + WIDTH
+		&& Y_OFFSET <= hdmi_yaddr && hdmi_yaddr < Y_OFFSET + HEIGHT;
+
+	wire [15:0] hdmi_bits_next = { hdmi_bits[14:0], dither_bit };
 
 	always @(posedge hdmi_clk)
 	begin
@@ -60,17 +77,18 @@ module hdmi_dither(
 		// dither bit is delayed by one clock, but that's ok
 		// since it just shifts the display by a pixel
 		if (hdmi_valid)
-			hdmi_bits <= { hdmi_bits[14:0], dither_bit };
+			hdmi_bits <= hdmi_bits_next;
 
 		// clock crossing flag for the full shift register
-		if (hdmi_valid && hdmi_xaddr[3:0] == 4'b0000)
+		if (hdmi_valid && out_xaddr[3:0] == 4'b0000)
 		begin
 			// full shift register, store the base address
 			// of the X register and the bits
-			bits_ready <= 1;
+			// do not signal if outside of the active window
+			bits_ready <= hdmi_in_window;
 			mono_bits <= hdmi_bits;
-			mono_xaddr <= { hdmi_xaddr[11:4], 4'b0000 };
-			mono_yaddr <= hdmi_yaddr;
+			mono_xaddr <= { out_xaddr[11:4]-1, 4'b0000 };
+			mono_yaddr <= out_yaddr;
 		end
 	end
 endmodule
@@ -89,13 +107,18 @@ module dither(
 	output out
 );
 	parameter ADDR_BITS = 5;
-	parameter NOISE_FILE = "bluenoise-32.hex";
+	parameter NOISE_FILE = "bluenoise-64.hex";
 	reg [7:0] noise[0:(1 << (2*ADDR_BITS)) - 1];
 	initial $readmemh(NOISE_FILE, noise);
 	wire [2*ADDR_BITS-1:0] noise_addr = { x, y };
 
 	reg out;
-	wire [9:0] sum = r + g + b + noise[noise_addr];
+
+	// this may need to be adjusted once all three channels
+	// are available. the plus one ensures that 255 -> 256
+	// for a pure white and avoids a larger comparison in
+	// the clocked block.
+	wire [9:0] sum = r + g + b + noise[noise_addr] + 1;
 
 	// if the sum of the red, green, blue and nosie for this
 	// address is more than 255, then it is a white pixel
