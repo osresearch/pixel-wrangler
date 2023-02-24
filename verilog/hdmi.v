@@ -33,7 +33,7 @@
 `include "mem.v"
 
 module hdmi_stream(
-	input clk,
+	input hdmi_clk,
 	input valid,
 	input [1:0] sync,
 	input [7:0] d0,
@@ -53,11 +53,8 @@ module hdmi_stream(
 );
 	reg vsync;
 	reg hsync;
-	reg next_hsync;
-	reg next_vsync;
 	reg last_hsync;
-	//wire vsync = sync[1];
-	//wire hsync = sync[0];
+	reg last_vsync;
 
 	reg [11:0] xaddr;
 	reg [11:0] yaddr;
@@ -69,15 +66,18 @@ module hdmi_stream(
 
 	wire data_valid = 1; // todo: determine data island period etc
 
-	always @(posedge clk)
+	always @(posedge hdmi_clk)
 	begin
 		rgb_valid <= 0;
 		r <= d2;
 		g <= d1;
 		b <= d0;
 
+		hsync <= sync[0];
 		last_hsync <= hsync;
-		{vsync,hsync} <= sync;
+
+		last_vsync <= sync[1];
+		vsync <= last_vsync || sync[1]; // two clocks at least
 
 		if (!valid)
 		begin
@@ -88,22 +88,14 @@ module hdmi_stream(
 			// edge triggered, but we can hold this as long as we need to
 			yaddr <= 0;
 			xaddr <= 0;
-			next_vsync <= 1;
 		end else
 		if (!hsync) begin
 			// only advance the y on the falling edge of hsync
 			if (last_hsync)
 				yaddr <= yaddr + 1;
 			xaddr <= 0;
-			next_hsync <= 1;
 		end else
 		if (data_valid) begin
-			// ensure single pulse width for the sync pulses
-			//vsync <= next_vsync;
-			//hsync <= next_hsync;
-			next_vsync <= 0;
-			next_hsync <= 0;
-
 			rgb_valid <= 1;
 			xaddr <= xaddr + 1;
 		end

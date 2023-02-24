@@ -228,7 +228,7 @@ module top(
 
 	hdmi_stream hdmi_s(
 		// inputs
-		.clk(hdmi_clk),
+		.hdmi_clk(hdmi_clk),
 		.valid(hdmi_valid),
 		.sync(hdmi_sync),
 		.d0(d0),
@@ -245,6 +245,14 @@ module top(
 		.b(b)
 	);
 `endif
+	reg [7:0] vsync_count;
+	reg last_vsync;
+	always @(posedge hdmi_clk)
+	begin
+		if (last_vsync && !vsync)
+			vsync_count <= vsync_count + 1;
+		last_vsync <= vsync;
+	end
 
 	// instantiate whatever display module included us
 	display display_(
@@ -255,12 +263,15 @@ module top(
 		// Streaming HDMI interface (in 25 MHz hdmi_clk domain)
 		.hdmi_clk(hdmi_clk),
 		.hdmi_valid(hdmi_valid),
+		.hdmi_reset(hdmi_reset),
 		.vsync(vsync),
 		.hsync(hsync),
 		.rgb_valid(rgb_valid),
-		.r(r),
-		.g(g),
+		.r(8'b0), // r),
+		.g(8'b0),
 		.b(b),
+		//.g(hdmi_yaddr[7:0] + vsync_count),
+		//.b(hdmi_xaddr[7:0] + vsync_count),
 		.hdmi_xaddr(hdmi_xaddr),
 		.hdmi_yaddr(hdmi_yaddr),
 `endif
@@ -323,6 +334,16 @@ module top(
 		.spi_di(spi_di),
 `endif
 	);
+
+
+	// debug glitching vsync
+	reg gpio_12, gpio_21, gpio_13;
+	always @(posedge hdmi_clk)
+	begin
+		gpio_12 <= hdmi_valid;
+		gpio_21 <= hsync;
+		gpio_13 <= vsync;
+	end
 
 	// EDID interface is not yet exposed to the user
 	wire sda_pin = gpio_25;

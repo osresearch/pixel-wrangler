@@ -190,9 +190,9 @@ module tmds_sync_recognizer(
 	//parameter CTRL_01 = 10'b0010101011; // 0AB
 	//parameter CTRL_10 = 10'b0101010100; // 154
 	parameter CTRL_11 = 10'b1010101011; // 2AB
-	parameter DELAY_BITS = 18;
+	parameter DELAY_BITS = 24;
 
-	reg valid;
+	reg valid = 0;
 	reg [2:0] phase = 0;
 	reg [DELAY_BITS:0] counter;
 
@@ -241,6 +241,12 @@ module tmds_clock_cross(
 );
 	reg wen;
 	reg [2:0] bit_counter = 0;
+	reg [9:0] d0;
+	reg [9:0] d1;
+	reg [9:0] d2;
+	wire [9:0] d0_rd;
+	wire [9:0] d1_rd;
+	wire [9:0] d2_rd;
 
 	always @(posedge reset or posedge bit_clk)
 	if (reset)
@@ -264,12 +270,19 @@ module tmds_clock_cross(
 	) clock_cross(
 		.wr_clk(bit_clk),
 		.wr_enable(wen),
-		.wr_addr(0),
+		.wr_addr(1'b0),
 		.wr_data({d0_data, d1_data, d2_data}),
 		.rd_clk(clk),
-		.rd_addr(0),
-		.rd_data({d0,d1,d2})
+		.rd_addr(1'b0),
+		.rd_data({d0_rd,d1_rd,d2_rd})
 	);
+
+	always @(posedge clk)
+	begin
+		d0 <= d0_rd;
+		d1 <= d1_rd;
+		d2 <= d2_rd;
+	end
 endmodule
 
 
@@ -369,6 +382,7 @@ module tmds_raw_decoder(
 	always @(posedge hdmi_clk)
 	begin
 		valid <= hdmi_locked && pixel_valid;
+		valid <= pixel_valid;
 	end
 endmodule
 
