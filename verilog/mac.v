@@ -14,6 +14,7 @@ module display(
 	// Streaming HDMI interface (in 25 MHz hdmi_clk domain)
 	input hdmi_clk,
 	input hdmi_valid,
+	input hdmi_reset,
 	input vsync,
 	input hsync,
 	input rgb_valid,
@@ -35,37 +36,30 @@ module display(
 	wire reset = 0;
 
 	// pulse the RGB led. should do something with state here
-	wire [7:0] rate_r = 8'h0F;
-	wire [7:0] rate_g = 8'h1F;
-	wire [7:0] rate_b = 8'h3F;
+	assign led_r = hdmi_reset ? 8'hFF : 8'h00;
+	assign led_g = rgb_valid ? 8'h30 : 8'h00;
+	assign led_b = hdmi_valid ? 8'h00 : 8'hf0;
+	//wire [7:0] rate_r = 8'h0F;
+	//wire [7:0] rate_g = 8'h1F;
+	//wire [7:0] rate_b = 8'h3F;
 
-	breath breath_r(clk, rate_r, led_r);
-	breath breath_g(clk, rate_g, led_g);
-	breath breath_b(clk, rate_b, led_b);
+	//breath breath_r(clk, rate_r, led_r);
+	//breath breath_g(clk, rate_g, led_g);
+	//breath breath_b(clk, rate_b, led_b);
 
 	// produce a 16 MHz clock from the 48 Mhz clock
 	wire clk_16mhz;
 	clk_div3 div3(clk_48mhz, reset, clk_16mhz);
 
+/*
 	wire [9:0] fb_xaddr;
 	wire [8:0] fb_yaddr;
 	reg [7:0] fb[0:1023];
 	initial $readmemh("apple-32.hex", fb);
 	wire [9:0] fb_addr = { fb_yaddr[6:2], fb_xaddr[6:2] };
 	wire fb_data = fb[fb_addr] > 127;
+*/
 
-	mac_display crt(
-		.clk_16mhz(clk_16mhz),
-		.reset(reset),
-		.hsync(gpio_bank_1[1]),
-		.vsync(gpio_bank_1[2]),
-		.out(gpio_bank_1[0]),
-		.xaddr(fb_xaddr),
-		.yaddr(fb_yaddr),
-		.fb_data(fb_data)
-	);
-
-/*
 	wire [15:0] mono_bits;
 	wire [11:0] mono_xaddr;
 	wire [11:0] mono_yaddr;
@@ -80,8 +74,8 @@ module display(
 		.hdmi_xaddr(hdmi_xaddr),
 		.hdmi_yaddr(hdmi_yaddr),
 		.hdmi_r(r),
-		.hdmi_r(g),
-		.hdmi_r(b),
+		.hdmi_g(g),
+		.hdmi_b(b),
 
 		.mono_clk(clk_16mhz),
 		.mono_bits(mono_bits),
@@ -90,34 +84,95 @@ module display(
 		.mono_bits_ready(mono_bits_ready),
 		.mono_vsync(mono_vsync)
 	);
-	
 
-	reg fb_xaddr[8:0];
-	reg fb_yaddr[8:0];
+	reg [9:0] fb_xaddr;
+	reg [8:0] fb_yaddr;
+	reg [15:0] fb_bits;
 
-	wire [12:0] rd_addr = fb_xaddr[8:4] | (fb_yaddr[8:0] << 5);
+	reg [13:0] rd_addr;
+	reg video_bit;
 
 	reg mono_bits_ready_delay = 0;
 
-	wire reader_active = draw_active && fb_xaddr[4:0] == 4b'1111;
+	//wire reader_active = fb_xaddr[3:0] == 4'b1111;
+	reg reader_active;
 
-	wire fb_wen = !reader_active && (mono_bits_ready || mono_bits_ready_delay);
+	// x offset must be a multiple of 16
+	parameter X_OFFSET = 64;
+	parameter Y_OFFSET = 128;
+	parameter WIDTH = 512;
+	parameter HEIGHT = 342;
+	wire [9:0] mono_xoffset = mono_xaddr - X_OFFSET;
+	wire [9:0] mono_yoffset = mono_yaddr - Y_OFFSET;
+	wire hdmi_in_window = 1
+		&& X_OFFSET <= mono_xaddr && mono_xaddr < X_OFFSET + WIDTH
+		&& Y_OFFSET <= mono_yaddr && mono_yaddr < Y_OFFSET + HEIGHT;
+
 
 	// xaddr bottom 4 bits are all zero since there are 16-bits
 	// returned at a time.  xaddr only goes to 512, so we have
 	// only a few bits worth of 
-	wire [12:0] wd_addr = mono_xaddr[8:4] | (mono_yaddr[8:0] << 5);
+	wire [13:0] wd_addr = { mono_yoffset[8:0], mono_xoffset[8:4] };
+
+	reg fb_wen;
+
+	// every 16 pixels cache the next 16 pixels worth of data
+	wire [3:0] xaddr_low = fb_xaddr[3:0];
+	wire [15:0] rd_data;
+	reg last_read_active;
+	always @(posedge clk_16mhz)
+	begin
+		fb_wen <= 0;
+		last_read_active <= 0;
+		mono_bits_ready_delay <= 0;
+
+		if (xaddr_low == 4'b0000) begin
+			// need to read the set of data
+			// delay any writes that might be happening
+			mono_bits_ready_delay <= mono_bits_ready;
+			last_read_active <= 1;
+ 			rd_addr <= { fb_yaddr[8:0], fb_xaddr[8:4] };
+		end else
+		if (hdmi_in_window) begin
+			// allow any writes or delayed writes to happen
+			// when they are in the active part of the display
+			fb_wen <= mono_bits_ready || mono_bits_ready_delay;
+		end
+
+		if (last_read_active)
+		begin
+			// refresh shift register from the frame buffer
+			video_bit <= rd_data[15];
+			fb_bits <= { rd_data[14:0], 1'b0 };
+		end else begin
+			// video out from the shift register
+			video_bit <= fb_bits[15];
+			fb_bits <= { fb_bits[14:0], 1'b0 };
+		end
+	end
+
 
 	// 512x512x1 fits in a single ice40up5k SPRAM
-	spram framebuffer(
+	spram_32k framebuffer(
 		.clk(clk_16mhz),
 		.wen(fb_wen),
 		.wr_addr(wd_addr),
 		.wr_data(mono_bits),
-		.rd_add(rd_addr),
-		.rd_data(fb_bits)
+		.rd_addr(rd_addr),
+		.rd_data(rd_data)
 	);
-*/
+
+	mac_display crt(
+		.clk_16mhz(clk_16mhz),
+		.reset(reset),
+		.hsync(gpio_bank_1[1]),
+		.vsync(gpio_bank_1[2]),
+		.out(gpio_bank_1[0]),
+		.xaddr(fb_xaddr),
+		.yaddr(fb_yaddr),
+		.fb_data(video_bit)
+	);
+
 
 endmodule
 
@@ -134,7 +189,7 @@ module mac_display(
 );
 	parameter ACTIVE_WIDTH = 512;
 	parameter ACTIVE_HEIGHT = 342;
-	parameter ACTIVE_XOFFSET = 190;
+	parameter ACTIVE_XOFFSET = 192;
 	parameter ACTIVE_YOFFSET = 48;
 
 	parameter TOTAL_WIDTH = 720;
@@ -217,3 +272,34 @@ module clk_div3(
 		neg_count <= neg_count + 1;
  
 endmodule
+
+module spram_32k(
+	input clk,
+	input reset = 0,
+	input cs = 1,
+	input wen,
+	input [13:0] wr_addr,
+	input [15:0] wr_data,
+	input [3:0] wr_mask = 4'b1111,
+	input [13:0] rd_addr,
+	output [15:0] rd_data
+);
+	SB_SPRAM256KA ram(
+		// read 16 bits at a time
+		.DATAOUT(rd_data),
+		.ADDRESS(wen ? wr_addr : rd_addr),
+		.DATAIN(wr_data),
+		.MASKWREN(wr_mask),
+		.WREN(wen),
+
+		.CHIPSELECT(cs && !reset),
+		.CLOCK(clk),
+
+		// if we cared about power, maybe we would adjust these
+		.STANDBY(1'b0),
+		.SLEEP(1'b0),
+		.POWEROFF(1'b1)
+	);
+
+endmodule
+

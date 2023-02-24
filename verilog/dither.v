@@ -26,7 +26,7 @@ module hdmi_dither(
 	reg [15:0] hdmi_bits;
 	reg [15:0] mono_bits;
 
-	wire bits_ready = hdmi_valid && hdmi_xaddr[3:0] == 4'b1111;
+	reg bits_ready;
 	reg mono_bits_ready;
 	reg [11:0] mono_xaddr;
 	reg [11:0] mono_yaddr;
@@ -36,7 +36,7 @@ module hdmi_dither(
 	wire vsync_falling_edge;
 	edge_detect vsync_edge(hdmi_clk, hdmi_vsync, vsync_falling_edge); 
 
-	clock_crossing_strobe
+	clock_cross_strobe
 		ready_strobe(hdmi_clk, bits_ready, mono_clk, mono_bits_ready);
 	clock_cross_strobe
 		vsync_strobe(hdmi_clk, vsync_falling_edge, mono_clk, mono_vsync);
@@ -54,6 +54,8 @@ module hdmi_dither(
 
 	always @(posedge hdmi_clk)
 	begin
+		bits_ready <= 0;
+
 		// accumulate the hdmi bits as they come in
 		// dither bit is delayed by one clock, but that's ok
 		// since it just shifts the display by a pixel
@@ -61,10 +63,11 @@ module hdmi_dither(
 			hdmi_bits <= { hdmi_bits[14:0], dither_bit };
 
 		// clock crossing flag for the full shift register
-		if (bits_ready)
+		if (hdmi_valid && hdmi_xaddr[3:0] == 4'b0000)
 		begin
 			// full shift register, store the base address
 			// of the X register and the bits
+			bits_ready <= 1;
 			mono_bits <= hdmi_bits;
 			mono_xaddr <= { hdmi_xaddr[11:4], 4'b0000 };
 			mono_yaddr <= hdmi_yaddr;
@@ -89,9 +92,10 @@ module dither(
 	parameter NOISE_FILE = "bluenoise-32.hex";
 	reg [7:0] noise[0:(1 << (2*ADDR_BITS)) - 1];
 	initial $readmemh(NOISE_FILE, noise);
+	wire [2*ADDR_BITS-1:0] noise_addr = { x, y };
 
 	reg out;
-	wire [9:0] sum = r + g + b + noise[(x << ADDR_BITS) | y];
+	wire [9:0] sum = r + g + b + noise[noise_addr];
 
 	// if the sum of the red, green, blue and nosie for this
 	// address is more than 255, then it is a white pixel
@@ -99,7 +103,7 @@ module dither(
 		out <= sum[9:8] != 0;
 endmodule
 
-module clock_crossing_strobe(
+module clock_cross_strobe(
 	input clk_in,
 	input in,
 	input clk_out,
