@@ -73,8 +73,8 @@ module rgb_drv(
 	wire [10:0] exp_g;
 	wire [10:0] exp_b;
 	pwm_map8 map_r(clk, bright_r, exp_r);
-	pwm_map8 map_b(clk, bright_b, exp_g);
-	pwm_map8 map_g(clk, bright_g, exp_b);
+	pwm_map8 map_b(clk, bright_b, exp_b);
+	pwm_map8 map_g(clk, bright_g, exp_g);
 
 	reg [2:0] out;
 	reg [2:0] pwm;
@@ -104,11 +104,11 @@ module rgb_drv(
 		.RGBLEDEN(enable),
 		.CURREN(1'b1),
 		.RGB0PWM(pwm[1]), // g
-		.RGB1PWM(pwm[0]), // r
-		.RGB2PWM(pwm[2]), // b
+		.RGB1PWM(pwm[2]), // r
+		.RGB2PWM(pwm[0]), // b
 // these are ignored? the connections are hard wired
-		.RGB0(out[1]),
-		.RGB1(out[0]),
+		.RGB0(out[0]),
+		.RGB1(out[1]),
 		.RGB2(out[2])
 	);
 endmodule
