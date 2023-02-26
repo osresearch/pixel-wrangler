@@ -23,7 +23,7 @@ module hdmi_dither(
 	output mono_bits_ready,
 	output mono_vsync
 );
-	parameter DITHER_BITS = 6;
+	parameter DITHER_BITS = 5;
 	parameter X_OFFSET = 64;
 	parameter Y_OFFSET = 128;
 	parameter WIDTH = 512;
@@ -107,10 +107,15 @@ module dither(
 	output out
 );
 	parameter ADDR_BITS = 5;
-	parameter NOISE_FILE = "bluenoise-64.hex";
+	parameter NOISE_FILE =
+		ADDR_BITS == 5 ? "bluenoise-32.hex" :
+		ADDR_BITS == 6 ? "bluenoise-64.hex" :
+		"unknown-noise-value";
+
 	reg [7:0] noise[0:(1 << (2*ADDR_BITS)) - 1];
 	initial $readmemh(NOISE_FILE, noise);
 	wire [2*ADDR_BITS-1:0] noise_addr = { x, y };
+	reg [7:0] noise_value;
 
 	reg out;
 
@@ -123,7 +128,10 @@ module dither(
 	// if the sum of the red, green, blue and nosie for this
 	// address is more than 255, then it is a white pixel
 	always @(posedge clk)
+	begin
+		noise_value <= noise[noise_addr];
 		out <= sum[9:8] != 0;
+	end
 endmodule
 
 module clock_cross_strobe(
