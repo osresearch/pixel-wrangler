@@ -1,0 +1,48 @@
+# The LED pins are using the current controlled outputs
+# and are negative logic (write a 0 to turn on).
+set_io -nowarn led_r	41
+set_io -nowarn led_g	39
+set_io -nowarn led_b	40
+
+set_io -nowarn spi_cs 16 # Drive high to ensure that the SPI flash is disabled
+set_io -nowarn spi_sck 15
+set_io -nowarn spi_mosi 14
+set_io -nowarn spi_msio 17
+
+set_io -nowarn pin_usbp 4 # IOB_8A
+set_io -nowarn pin_usbn 3 # IOB_9B
+set_io -nowarn pin_usb_pu 6 # IOB_13B
+
+set_io -nowarn sw_1 2 # IOB_6A
+
+# HDMI input
+set_io -nowarn tmds_d0p 25 # IOT_36B; needs inversion
+set_io -nowarn tmds_d0n 23 # IOT_37A
+set_io -nowarn tmds_d1p 27 # IOT_38B; needs inversion
+set_io -nowarn tmds_d1n 26 # IOT_39A
+set_io -nowarn tmds_d2p 32 # IOT_43A
+set_io -nowarn tmds_d2n 31 # IOT_42B
+set_io -nowarn tmds_clkp 37 # IOT_45A_G1
+set_io -nowarn tmds_clkn 34 # IOT_44b
+set_io -nowarn hdmi_sda 35 # IOT_46B_G0
+set_io -nowarn hdmi_scl 36 # IOT_48b
+
+# GPIO bank 0, bottom side
+set_io -nowarn gpio_0_0 10 # IOB_18A
+set_io -nowarn gpio_0_1 11 # IOB_20A
+set_io -nowarn gpio_0_2 12 # IOB_22A
+set_io -nowarn gpio_0_3 13 # IOB_24A
+set_io -nowarn gpio_0_4 18 # IOB_31B
+set_io -nowarn gpio_0_5 19 # IOB_29B
+set_io -nowarn gpio_0_6 20 # IOB_25B_G
+set_io -nowarn gpio_0_7 21 # IOB_23B
+
+# GPIO bank 1, top side
+set_io -nowarn gpio_1_0 48 # IOB_4A
+set_io -nowarn gpio_1_1 47 # IOB_2A
+set_io -nowarn gpio_1_2 46 # IOB_0A
+set_io -nowarn gpio_1_3 45 # IOB_5B
+set_io -nowarn gpio_1_4 44 # IOB_3B_G6
+set_io -nowarn gpio_1_5 43 # IOB_49A
+set_io -nowarn gpio_1_6 42 # IOB_51A
+set_io -nowarn gpio_1_7 38 # IOB_50B

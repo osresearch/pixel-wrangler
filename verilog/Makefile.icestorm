@@ -1,22 +1,9 @@
-DEVICE-upduino ?= up5k
-FOOTPRINT-upduino ?= sg48
-PIN_SRC-upduino ?= upduino_v2.pcf
-
-DEVICE-icebreaker ?= up5k
-FOOTPRINT-icebreaker ?= sg48
-PIN_SRC-icebreaker ?= icebreaker.pcf
-
-
-DEVICE-tinyfpga := lp8k
-FOOTPRINT-tinyfpga := cm81
-PIN_SRC-tinyfpga := tinyfpga-bx.pcf
-
-DEVICE-tomu := up5k
-FOOTPRINT-tomu := uwg30
-PIN_SRC-tomu := tomu.pcf
+DEVICE-pixelwrangler ?= up5k
+FOOTPRINT-pixelwrangler ?= sg48
+PIN_SRC-pixelwrangler ?= pixelwrangler_v0.pcf
 
 USB_DEV ?= 1-1:1.0
-BOARD ?= upduino
+BOARD ?= pixelwrangler
 DEVICE := $(DEVICE-$(BOARD))
 FOOTPRINT := $(FOOTPRINT-$(BOARD))
 PIN_SRC := $(PIN_SRC-$(BOARD))
