@@ -2,7 +2,7 @@
 *.asc
 *.bin
 *.json
-.*.swp
+.*.sw[po]
 _autosave*
 *.gbr
 *-backups
