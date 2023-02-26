@@ -125,6 +125,7 @@ module tmds_shift_register_ddr(
 	input in_p,
 	output [BITS-1:0] out
 );
+	parameter INVERT = 0;
 	parameter BITS = 10;
 	reg [BITS-1:0] out;
 	wire in0, in1;
@@ -144,11 +145,11 @@ module tmds_shift_register_ddr(
 
 	// if we copy the negedge bit we spend less routing time?
 	always @(negedge bit_clk)
-		in1_0 <= in1;
+		in1_0 <= INVERT ? ~in1 : in1;
 
 	always @(posedge bit_clk)
 	begin
-		in0_0 <= in0;
+		in0_0 <= INVERT ? ~in0 : in0;
 		out <= { in1_0, in0_0, out[BITS-1:2] };
 	end
 endmodule
@@ -159,6 +160,7 @@ module tmds_shift_register(
 	input in_p,
 	output [BITS-1:0] out
 );
+	parameter INVERT = 0;
 	parameter BITS = 10;
 	reg [BITS-1:0] out;
 	wire in0;
@@ -173,7 +175,7 @@ module tmds_shift_register(
 	);
 
 	always @(posedge bit_clk)
-		out <= { in0, out[BITS-1:1] };
+		out <= { INVERT ? ~in0 : in0, out[BITS-1:1] };
 endmodule
 
 // detect a control message in the shift register and use it
@@ -307,6 +309,7 @@ module tmds_raw_decoder(
 	output hdmi_clk,
 	output bit_clk
 );
+	parameter [2:0] INVERT = 3'b000;
 	wire hdmi_clk; // 25 MHz decoded from TDMS input
 	wire bit_clk; // 250 MHz PLL'ed from TMDS clock (or 125 MHz if DDR)
 	reg pixel_strobe, pixel_valid; // when new pixels are detected by the synchronizer
@@ -334,19 +337,19 @@ module tmds_raw_decoder(
 	wire [9:0] d1_data;
 	wire [9:0] d2_data;
 
-	tmds_shift_register_ddr d0_shift(
+	tmds_shift_register_ddr #(.INVERT(INVERT[0])) d0_shift(
 		.bit_clk(bit_clk),
 		.in_p(d0_p),
 		.out(d0_data)
 	);
 
-	tmds_shift_register d1_shift(
+	tmds_shift_register #(.INVERT(INVERT[1])) d1_shift(
 		.bit_clk(bit_clk),
 		.in_p(d1_p),
 		.out(d1_data)
 	);
 
-	tmds_shift_register d2_shift(
+	tmds_shift_register #(.INVERT(INVERT[2])) d2_shift(
 		.bit_clk(bit_clk),
 		.in_p(d2_p),
 		.out(d2_data)
@@ -418,6 +421,8 @@ module tmds_decoder(
 	output ctrl_valid,
 	output [3:0] ctrl
 );
+	parameter [2:0] INVERT = 3'b000;
+
 	wire [9:0] tmds_d0;
 	wire [9:0] tmds_d1;
 	wire [9:0] tmds_d2;
@@ -427,7 +432,8 @@ module tmds_decoder(
 	wire hdmi_locked; // good clock?
 	wire hdmi_valid; // good decode?
 
-	tmds_raw_decoder tmds_raw_i(
+	tmds_raw_decoder #(.INVERT(INVERT))
+	tmds_raw_i(
 		.reset(reset),
 
 		// physical inputs
