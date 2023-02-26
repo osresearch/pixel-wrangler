@@ -12,6 +12,7 @@ PIN_SRC := $(PIN_SRC-$(BOARD))
 PNR ?= $(ICEPATH)nextpnr-ice40 -f
 .SECONDARY:
 
+# this works for the upduino; the pixelwrangler board uses tinyprog
 %.flash: %.bin
 	$(ICEPATH)iceprog -e 128 # Force a reset
 	$(ICEPATH)iceprog $<
@@ -63,5 +64,8 @@ $(foreach t,$(TEST-y),$(eval $(call make-test,$t)))
 
 clean:
 	$(RM) *.blif *.asc *.bin *.json .*.d
+
+.PHONY: all prog clean FORCE
+FORCE:
 
 -include .*.d
