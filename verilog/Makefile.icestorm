@@ -39,9 +39,6 @@ PNR ?= $(ICEPATH)nextpnr-ice40 -f
 %.gui: %.json
 	$(PNR) --gui --$(DEVICE) --pcf $(PIN_SRC) --json $<
 
-%.bin: %.asc
-	$(ICEPATH)icepack $^ $@
-
 # Generate a desired MHz pll
 pll_%.v:
 	$(ICEPATH)icepll \
