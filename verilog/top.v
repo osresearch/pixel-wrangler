@@ -10,6 +10,7 @@
 `include "uart.v"
 `include "i2c.v"
 `include "pwm.v"
+`include "util.v"
 
 `ifndef WRANGLER_NO_HDMI
 `define WRANGLER_HDMI
@@ -93,7 +94,8 @@ module top(
 	output gpio_0_4,
 	output gpio_0_5,
 	output gpio_0_6,
-	output gpio_0_7,
+	//output gpio_0_7,
+	inout gpio_0_7, // temporarily bodged to hdmi_sda
 
 	output gpio_1_0,
 	output gpio_1_1,
@@ -102,7 +104,8 @@ module top(
 	output gpio_1_4,
 	output gpio_1_5,
 	output gpio_1_6,
-	inout gpio_1_7, // temporarily bodged to hdmi_sda
+	output gpio_1_7,
+
 
 	input sw_1
 );
@@ -269,8 +272,8 @@ module top(
 		.vsync(vsync),
 		.hsync(hsync),
 		.rgb_valid(rgb_valid),
-		.r(8'b0), // r),
-		.g(8'b0),
+		.r(r),
+		.g(g),
 		.b(b),
 		//.g(hdmi_yaddr[7:0] + vsync_count),
 		//.b(hdmi_xaddr[7:0] + vsync_count),
@@ -292,14 +295,14 @@ module top(
 		}),
 
 		.gpio_bank_1({
-			gpio_1_0,
-			gpio_1_1,
-			gpio_1_2,
-			gpio_1_3,
-			gpio_1_4,
-			gpio_1_5,
+			gpio_1_7,
 			gpio_1_6,
-			gpio_1_7
+			gpio_1_5,
+			gpio_1_4,
+			gpio_1_3,
+			gpio_1_2,
+			gpio_1_1,
+			gpio_1_0
 		}),
 `endif
 
@@ -342,16 +345,15 @@ module top(
 	);
 
 
-/*
 	// debug glitching vsync
-	reg gpio_12, gpio_21, gpio_13;
-	always @(posedge hdmi_clk)
+	reg gpio_0_0, gpio_0_1, gpio_0_2;
+	always @(posedge clk_48mhz)
 	begin
-		gpio_12 <= hdmi_valid;
-		gpio_21 <= hsync;
-		gpio_13 <= vsync;
+		gpio_0_0 <= hdmi_scl;
+		gpio_0_1 <= hdmi_clk;
+		gpio_0_2 <= hdmi_clk;
 	end
-*/
+	assign gpio_0_3 = hdmi_clk;
 
 	// EDID interface is not yet exposed to the user
 	wire sda_out;
@@ -360,7 +362,7 @@ module top(
 
 	tristate sda_buffer(
 		//.pin(hdmi_sda),
-		.pin(gpio_1_7),
+		.pin(gpio_0_7),
 		.enable(sda_enable),
 		.data_out(sda_out),
 		.data_in(sda_in)
@@ -384,18 +386,3 @@ module top(
 	);
 endmodule
 
-module tristate(
-	inout pin,
-	input enable,
-	input data_out,
-	output data_in
-);
-	SB_IO #(
-		.PIN_TYPE(6'b1010_01) // tristatable output
-	) buffer(
-		.PACKAGE_PIN(pin),
-		.OUTPUT_ENABLE(enable),
-		.D_IN_0(data_in),
-		.D_OUT_0(data_out)
-	);
-endmodule
