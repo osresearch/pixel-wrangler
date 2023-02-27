@@ -23,7 +23,7 @@ module hdmi_dither(
 	output mono_bits_ready,
 	output mono_vsync
 );
-	parameter DITHER_BITS = 5;
+	parameter DITHER_BITS = 6;
 	parameter X_OFFSET = 64;
 	parameter Y_OFFSET = 128;
 	parameter WIDTH = 512;
@@ -123,7 +123,8 @@ module dither(
 	// are available. the plus one ensures that 255 -> 256
 	// for a pure white and avoids a larger comparison in
 	// the clocked block.
-	wire [9:0] sum = r + g + b + noise[noise_addr] + 1;
+	//wire [9:0] sum = r + g + b + noise_value + 1;
+	wire [9:0] sum = b + noise_value + 1;
 
 	// if the sum of the red, green, blue and nosie for this
 	// address is more than 255, then it is a white pixel
