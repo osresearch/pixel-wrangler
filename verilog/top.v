@@ -102,7 +102,7 @@ module top(
 	output gpio_1_4,
 	output gpio_1_5,
 	output gpio_1_6,
-	output gpio_1_7,
+	inout gpio_1_7, // temporarily bodged to hdmi_sda
 
 	input sw_1
 );
@@ -360,7 +360,7 @@ module top(
 
 	tristate sda_buffer(
 		//.pin(hdmi_sda),
-		.pin(gpio_0_7),
+		.pin(gpio_1_7),
 		.enable(sda_enable),
 		.data_out(sda_out),
 		.data_in(sda_in)
