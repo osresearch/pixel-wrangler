@@ -288,6 +288,30 @@ module tmds_clock_cross(
 endmodule
 
 
+module tmds_clk_pll(
+	input reset,
+	input clk_p,
+	output hdmi_clk,
+	output bit_clk,
+	output locked
+);
+	SB_GB_IO #(
+		.PIN_TYPE(6'b000000),
+		.IO_STANDARD("SB_LVDS_INPUT")
+	) differential_clock_input (
+		.PACKAGE_PIN(clk_p),
+		.GLOBAL_BUFFER_OUTPUT(hdmi_clk)
+	);
+
+	hdmi_pll pll(
+		.clock_in(hdmi_clk),
+		.clock_out(bit_clk),
+		.locked(locked),
+		.reset(reset)
+	);
+endmodule
+
+
 // Synchronize the three channels with the TMDS clock and unknown phase
 // of the bits.  Returns the raw 8b10b encoded values for futher processing
 // and a TMDS synchronize clock for the data stream.  The data are only valid
@@ -317,19 +341,12 @@ module tmds_raw_decoder(
 	assign locked = hdmi_locked;
 	reg valid;
 
-	SB_GB_IO #(
-		.PIN_TYPE(6'b000000),
-		.IO_STANDARD("SB_LVDS_INPUT")
-	) differential_clock_input (
-		.PACKAGE_PIN(clk_p),
-		.GLOBAL_BUFFER_OUTPUT(hdmi_clk)
-	);
-
-	hdmi_pll pll(
-		.clock_in(hdmi_clk),
-		.clock_out(bit_clk),
-		.locked(hdmi_locked),
-		.reset(reset)
+	tmds_clk_pll tmds_clk_pll_i(
+		.reset(reset),
+		.clk_p(clk_p),
+		.hdmi_clk(hdmi_clk),
+		.bit_clk(bit_clk),
+		.locked(hdmi_locked)
 	);
 
 	// bit_clk domain
