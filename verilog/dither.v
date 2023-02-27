@@ -134,38 +134,3 @@ module dither(
 		out <= sum[9:8] != 0;
 	end
 endmodule
-
-module clock_cross_strobe(
-	input clk_in,
-	input in,
-	input clk_out,
-	output out
-);
-	reg flag = 0;
-	reg last_flag = 0;
-	reg out = 0;
-
-	always @(posedge clk_in)
-		if (in)
-			flag <= ~flag;
-
-	always @(posedge clk_out)
-	begin
-		out <= last_flag != flag;
-		last_flag <= flag;
-	end
-endmodule
-
-
-module edge_detect(
-	input clk,
-	input in,
-	output fall,
-	output rise
-);
-	reg last;
-	assign fall = !in &&  last;
-	assign rise =  in && !last;
-	always @(posedge clk)
-		last <= in;
-endmodule
