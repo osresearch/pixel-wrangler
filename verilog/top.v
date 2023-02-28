@@ -106,8 +106,7 @@ module top(
 	output gpio_1_6,
 	output gpio_1_7,
 
-
-	input sw_1
+	input sw1
 );
 	assign spi_cs = 1; // it is necessary to turn off the SPI flash chip
 	//reg led_r, led_g, led_b;
@@ -122,7 +121,6 @@ module top(
 		clk_div <= clk_div + 1;
 
 	wire hdmi_clk;
-	wire bit_clk; // 250 MHz PLL'ed from TMDS clock (or 125 MHz if DDR)
 	wire hdmi_locked;
 	reg valid;
 
@@ -148,6 +146,14 @@ module top(
 	assign led_g = 1;
 	assign led_b = 1;
 `endif
+
+	wire sw1_in;
+	tristate #(.PULLUP(1)) sw1_buffer(
+		.pin(sw1),
+		.enable(0),
+		.data_in(sw1_in),
+		.data_out(1'b0)
+	);
 
 `ifdef WRANGLER_UART
 	// serial port interface
@@ -196,6 +202,7 @@ module top(
 	wire [11:0] hdmi_yaddr;
 
 	// need to expose this reset to the user?
+	wire user_hdmi_reset;
 	reg hdmi_reset = 0;
 	reg [20:0] invalid_counter = 0;
 	always @(posedge clk)
@@ -205,7 +212,7 @@ module top(
 		else
 			invalid_counter <= invalid_counter == 0 ? 0 : invalid_counter - 1;
 
-		hdmi_reset <= invalid_counter[20];
+		hdmi_reset <= invalid_counter[20] || user_hdmi_reset;
 	end
 
 	tmds_decoder #(
@@ -267,8 +274,9 @@ module top(
 `ifdef WRANGLER_HDMI
 		// Streaming HDMI interface (in 25 MHz hdmi_clk domain)
 		.hdmi_clk(hdmi_clk),
+		.hdmi_bit_clk(hdmi_bit_clk),
 		.hdmi_valid(hdmi_valid),
-		.hdmi_reset(hdmi_reset),
+		.hdmi_reset(user_hdmi_reset),
 		.vsync(vsync),
 		.hsync(hsync),
 		.rgb_valid(rgb_valid),
@@ -325,7 +333,7 @@ module top(
 
 `ifdef WRANGLER_SWITCH
 	// user switch
-		.sw1(sw1),
+		.sw1(sw1_in),
 `endif
 
 `ifdef WRANGLER_LED

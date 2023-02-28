@@ -13,7 +13,7 @@ set_io -nowarn pin_usbp 4 # IOB_8A
 set_io -nowarn pin_usbn 3 # IOB_9B
 set_io -nowarn pin_usb_pu 6 # IOB_13B
 
-set_io -nowarn sw_1 2 # IOB_6A
+set_io -nowarn sw1 2 # IOB_6A
 
 # HDMI input
 set_io -nowarn tmds_d0p 25 # IOT_36B; needs inversion
