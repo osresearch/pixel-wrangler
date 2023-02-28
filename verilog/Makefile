@@ -2,7 +2,7 @@
 all: mac.bin
 include Makefile.icestorm
 
-mac.bin: bluenoise-32.hex bluenoise-64.hex
+mac.json: bluenoise-32.hex bluenoise-64.hex bluenoise-128.hex bluenoise-256.hex
 
 %.hex: ../images/%.png
 	convert $< gray:- \
