@@ -65,7 +65,7 @@ module hdmi_dither(
 
 	wire hdmi_in_window = 1
 		&& X_OFFSET <= hdmi_xaddr && hdmi_xaddr < X_OFFSET + WIDTH
-		&& Y_OFFSET <= hdmi_yaddr && hdmi_yaddr < Y_OFFSET + HEIGHT;
+		&& Y_OFFSET <= hdmi_yaddr && hdmi_yaddr < Y_OFFSET + HEIGHT + 1;
 
 	wire [15:0] hdmi_bits_next = { hdmi_bits[14:0], dither_bit };
 
