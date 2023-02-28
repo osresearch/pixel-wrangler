@@ -107,10 +107,19 @@ module dither(
 	output out
 );
 	parameter ADDR_BITS = 5;
-	parameter NOISE_FILE = "bluenoise-64.hex";
+	parameter NOISE_FILE =
+		ADDR_BITS == 5 ? "bluenoise-32.hex" :
+		ADDR_BITS == 6 ? "bluenoise-64.hex" :
+		ADDR_BITS == 7 ? "bluenoise-128.hex" :
+		ADDR_BITS == 8 ? "bluenoise-256.hex" :
+		"unknown-noise-value";
+
 	reg [7:0] noise[0:(1 << (2*ADDR_BITS)) - 1];
 	initial $readmemh(NOISE_FILE, noise);
 	wire [2*ADDR_BITS-1:0] noise_addr = { x, y };
+	reg [7:0] noise_value0;
+	reg [7:0] noise_value1;
+	reg [7:0] noise_value2;
 
 	reg out;
 
@@ -118,45 +127,30 @@ module dither(
 	// are available. the plus one ensures that 255 -> 256
 	// for a pure white and avoids a larger comparison in
 	// the clocked block.
-	wire [9:0] sum = r + g + b + noise[noise_addr] + 1;
+	//wire [9:0] sum = r + g + b + noise_value + 1;
+	wire [8:0] r_sum = r + noise_value0;
+	wire [8:0] b_sum = b + noise_value1;
+	wire [8:0] g_sum = g + noise_value2;
 
-	// if the sum of the red, green, blue and nosie for this
-	// address is more than 255, then it is a white pixel
+	// r is not full range?
+	wire r_dither = (r_sum >= 9'd255);
+	wire b_dither = (b_sum >= 9'd255);
+	wire g_dither = (g_sum >= 9'd255);
+
+	wire dither_bit = 0
+		//| r_dither
+		| b_dither
+		//| g_dither
+		;
+
 	always @(posedge clk)
-		out <= sum[9:8] != 0;
-endmodule
-
-module clock_cross_strobe(
-	input clk_in,
-	input in,
-	input clk_out,
-	output out
-);
-	reg flag = 0;
-	reg last_flag = 0;
-	reg out = 0;
-
-	always @(posedge clk_in)
-		if (in)
-			flag <= ~flag;
-
-	always @(posedge clk_out)
 	begin
-		out <= last_flag != flag;
-		last_flag <= flag;
+		// track the last few noise values
+		// so that R, G, and B have slightly different patterns
+		noise_value2 <= noise_value1;
+		noise_value1 <= noise_value0;
+		noise_value0 <= noise[noise_addr];
+
+		out <= dither_bit;
 	end
-endmodule
-
-
-module edge_detect(
-	input clk,
-	input in,
-	output fall,
-	output rise
-);
-	reg last;
-	assign fall = !in &&  last;
-	assign rise =  in && !last;
-	always @(posedge clk)
-		last <= in;
 endmodule

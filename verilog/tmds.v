@@ -125,6 +125,7 @@ module tmds_shift_register_ddr(
 	input in_p,
 	output [BITS-1:0] out
 );
+	parameter INVERT = 0;
 	parameter BITS = 10;
 	reg [BITS-1:0] out;
 	wire in0, in1;
@@ -144,11 +145,11 @@ module tmds_shift_register_ddr(
 
 	// if we copy the negedge bit we spend less routing time?
 	always @(negedge bit_clk)
-		in1_0 <= in1;
+		in1_0 <= INVERT ? ~in1 : in1;
 
 	always @(posedge bit_clk)
 	begin
-		in0_0 <= in0;
+		in0_0 <= INVERT ? ~in0 : in0;
 		out <= { in1_0, in0_0, out[BITS-1:2] };
 	end
 endmodule
@@ -159,6 +160,7 @@ module tmds_shift_register(
 	input in_p,
 	output [BITS-1:0] out
 );
+	parameter INVERT = 0;
 	parameter BITS = 10;
 	reg [BITS-1:0] out;
 	wire in0;
@@ -173,7 +175,7 @@ module tmds_shift_register(
 	);
 
 	always @(posedge bit_clk)
-		out <= { in0, out[BITS-1:1] };
+		out <= { INVERT ? ~in0 : in0, out[BITS-1:1] };
 endmodule
 
 // detect a control message in the shift register and use it
@@ -244,10 +246,11 @@ module tmds_clock_cross(
 	reg [9:0] d0;
 	reg [9:0] d1;
 	reg [9:0] d2;
-	wire [9:0] d0_rd;
-	wire [9:0] d1_rd;
-	wire [9:0] d2_rd;
+	reg [9:0] d0_rd;
+	reg [9:0] d1_rd;
+	reg [9:0] d2_rd;
 
+/*
 	always @(posedge reset or posedge bit_clk)
 	if (reset)
 	begin
@@ -276,6 +279,21 @@ module tmds_clock_cross(
 		.rd_addr(1'b0),
 		.rd_data({d0_rd,d1_rd,d2_rd})
 	);
+*/
+	always @(posedge bit_clk)
+	begin
+		if (bit_counter >= 4'h4)
+			bit_counter <= 0;
+		else
+			bit_counter <= bit_counter + 1;
+
+		if (bit_counter == phase)
+		begin
+			d0_rd <= d0_data;
+			d1_rd <= d1_data;
+			d2_rd <= d2_data;
+		end
+	end
 
 	always @(posedge clk)
 	begin
@@ -283,6 +301,30 @@ module tmds_clock_cross(
 		d1 <= d1_rd;
 		d2 <= d2_rd;
 	end
+endmodule
+
+
+module tmds_clk_pll(
+	input reset,
+	input clk_p,
+	output hdmi_clk,
+	output bit_clk,
+	output locked
+);
+	SB_GB_IO #(
+		.PIN_TYPE(6'b000000),
+		.IO_STANDARD("SB_LVDS_INPUT")
+	) differential_clock_input (
+		.PACKAGE_PIN(clk_p),
+		.GLOBAL_BUFFER_OUTPUT(hdmi_clk)
+	);
+
+	hdmi_pll pll(
+		.clock_in(hdmi_clk),
+		.clock_out(bit_clk),
+		.locked(locked),
+		.reset(reset)
+	);
 endmodule
 
 
@@ -307,6 +349,7 @@ module tmds_raw_decoder(
 	output hdmi_clk,
 	output bit_clk
 );
+	parameter [2:0] INVERT = 3'b000;
 	wire hdmi_clk; // 25 MHz decoded from TDMS input
 	wire bit_clk; // 250 MHz PLL'ed from TMDS clock (or 125 MHz if DDR)
 	reg pixel_strobe, pixel_valid; // when new pixels are detected by the synchronizer
@@ -314,19 +357,12 @@ module tmds_raw_decoder(
 	assign locked = hdmi_locked;
 	reg valid;
 
-	SB_GB_IO #(
-		.PIN_TYPE(6'b000000),
-		.IO_STANDARD("SB_LVDS_INPUT")
-	) differential_clock_input (
-		.PACKAGE_PIN(clk_p),
-		.GLOBAL_BUFFER_OUTPUT(hdmi_clk)
-	);
-
-	hdmi_pll pll(
-		.clock_in(hdmi_clk),
-		.clock_out(bit_clk),
-		.locked(hdmi_locked),
-		.reset(reset)
+	tmds_clk_pll tmds_clk_pll_i(
+		.reset(reset),
+		.clk_p(clk_p),
+		.hdmi_clk(hdmi_clk),
+		.bit_clk(bit_clk),
+		.locked(hdmi_locked)
 	);
 
 	// bit_clk domain
@@ -334,19 +370,19 @@ module tmds_raw_decoder(
 	wire [9:0] d1_data;
 	wire [9:0] d2_data;
 
-	tmds_shift_register_ddr d0_shift(
+	tmds_shift_register_ddr #(.INVERT(INVERT[0])) d0_shift(
 		.bit_clk(bit_clk),
 		.in_p(d0_p),
 		.out(d0_data)
 	);
 
-	tmds_shift_register d1_shift(
+	tmds_shift_register #(.INVERT(INVERT[1])) d1_shift(
 		.bit_clk(bit_clk),
 		.in_p(d1_p),
 		.out(d1_data)
 	);
 
-	tmds_shift_register d2_shift(
+	tmds_shift_register #(.INVERT(INVERT[2])) d2_shift(
 		.bit_clk(bit_clk),
 		.in_p(d2_p),
 		.out(d2_data)
@@ -418,6 +454,8 @@ module tmds_decoder(
 	output ctrl_valid,
 	output [3:0] ctrl
 );
+	parameter [2:0] INVERT = 3'b000;
+
 	wire [9:0] tmds_d0;
 	wire [9:0] tmds_d1;
 	wire [9:0] tmds_d2;
@@ -427,7 +465,8 @@ module tmds_decoder(
 	wire hdmi_locked; // good clock?
 	wire hdmi_valid; // good decode?
 
-	tmds_raw_decoder tmds_raw_i(
+	tmds_raw_decoder #(.INVERT(INVERT))
+	tmds_raw_i(
 		.reset(reset),
 
 		// physical inputs

@@ -10,6 +10,7 @@
 `include "uart.v"
 `include "i2c.v"
 `include "pwm.v"
+`include "util.v"
 
 `ifndef WRANGLER_NO_HDMI
 `define WRANGLER_HDMI
@@ -73,40 +74,39 @@ module display(
 */
 
 module top(
-	output serial_txd,
-	input serial_rxd,
 	output spi_cs,
 	output led_r,
 	output led_g,
 	output led_b,
 
-	// debug output
-	output gpio_28,
-	output gpio_2,
-	output gpio_46,
+	//inout hdmi_sda, // OOPS conflicts with tmds clk
+	input hdmi_scl,
 
-	// hdmi clock 
-	input gpio_37, // pair input gpio_4,
+	input tmds_d0n, // need to invert
+	input tmds_d1n, // need to invert
+	input tmds_d2p,
+	input tmds_clkp,
 
-	// hdmi pairs 36/43, 38/42, 26/27
-	input gpio_43, // pair input gpio_36,
-	input gpio_42, // pair input gpio_38,
-	input gpio_26, // pair input gpio_27
+	output gpio_0_0,
+	output gpio_0_1,
+	output gpio_0_2,
+	output gpio_0_3,
+	output gpio_0_4,
+	output gpio_0_5,
+	output gpio_0_6,
+	//output gpio_0_7,
+	inout gpio_0_7, // temporarily bodged to hdmi_sda
 
-	// hdmi i2c interface
-	input gpio_23, // SCL
-	inout gpio_25, // SDA
+	output gpio_1_0,
+	output gpio_1_1,
+	output gpio_1_2,
+	output gpio_1_3,
+	output gpio_1_4,
+	output gpio_1_5,
+	output gpio_1_6,
+	output gpio_1_7,
 
-	// two LED panels
-	output gpio_12,
-	output gpio_21,
-	output gpio_13,
-	output gpio_19,
-	output gpio_18,
-	output gpio_11,
-	output gpio_9,
-	output gpio_6,
-	output gpio_44
+	input sw1
 );
 	assign spi_cs = 1; // it is necessary to turn off the SPI flash chip
 	//reg led_r, led_g, led_b;
@@ -119,6 +119,10 @@ module top(
 	wire clk = clk_div[2];
 	always @(posedge clk_48mhz)
 		clk_div <= clk_div + 1;
+
+	wire hdmi_clk;
+	wire hdmi_locked;
+	reg valid;
 
 `ifdef WRANGLER_LED
 	/*
@@ -143,6 +147,14 @@ module top(
 	assign led_b = 1;
 `endif
 
+	wire sw1_in;
+	tristate #(.PULLUP(1)) sw1_buffer(
+		.pin(sw1),
+		.enable(0),
+		.data_in(sw1_in),
+		.data_out(1'b0)
+	);
+
 `ifdef WRANGLER_UART
 	// serial port interface
 	// TODO: replace with USB serial port
@@ -163,9 +175,6 @@ module top(
 		.uart_rxd(uart_rxd),
 		.uart_rxd_strobe(uart_rxd_strobe)
 	);
-`else
-	// idle high with no serial port attached
-	assign serial_txd = 1;
 `endif
 
 `ifdef WRANGLER_HDMI
@@ -193,6 +202,7 @@ module top(
 	wire [11:0] hdmi_yaddr;
 
 	// need to expose this reset to the user?
+	wire user_hdmi_reset;
 	reg hdmi_reset = 0;
 	reg [20:0] invalid_counter = 0;
 	always @(posedge clk)
@@ -202,17 +212,19 @@ module top(
 		else
 			invalid_counter <= invalid_counter == 0 ? 0 : invalid_counter - 1;
 
-		hdmi_reset <= invalid_counter[20];
+		hdmi_reset <= invalid_counter[20] || user_hdmi_reset;
 	end
 
-	tmds_decoder tmds_decoder_i(
+	tmds_decoder #(
+		.INVERT(3'b011)
+	) tmds_decoder_i(
 		.reset(hdmi_reset),
 
 		// physical inputs
-		.clk_p(gpio_37),
-		.d0_p(gpio_42),
-		.d1_p(gpio_43),
-		.d2_p(gpio_26),
+		.clk_p(tmds_clkp),
+		.d0_p(tmds_d0n),
+		.d1_p(tmds_d1n),
+		.d2_p(tmds_d2p),
 
 		// outputs
 		.hdmi_clk(hdmi_clk),
@@ -262,13 +274,14 @@ module top(
 `ifdef WRANGLER_HDMI
 		// Streaming HDMI interface (in 25 MHz hdmi_clk domain)
 		.hdmi_clk(hdmi_clk),
+		.hdmi_bit_clk(hdmi_bit_clk),
 		.hdmi_valid(hdmi_valid),
-		.hdmi_reset(hdmi_reset),
+		.hdmi_reset(user_hdmi_reset),
 		.vsync(vsync),
 		.hsync(hsync),
 		.rgb_valid(rgb_valid),
-		.r(8'b0), // r),
-		.g(8'b0),
+		.r(r),
+		.g(g),
 		.b(b),
 		//.g(hdmi_yaddr[7:0] + vsync_count),
 		//.b(hdmi_xaddr[7:0] + vsync_count),
@@ -279,21 +292,25 @@ module top(
 `ifdef WRANGLER_GPIO
 	// GPIO banks for output
 		.gpio_bank_0({
-			gpio_12,
-			gpio_21,
-			gpio_13,
-			gpio_19,
-			gpio_18,
-			gpio_11,
-			gpio_9,
-			gpio_6
+			gpio_0_0,
+			gpio_0_1,
+			gpio_0_2,
+			gpio_0_3,
+			gpio_0_4,
+			gpio_0_5,
+			gpio_0_6,
+			gpio_0_7
 		}),
 
 		.gpio_bank_1({
-			gpio_44,
-			gpio_2, // debug
-			gpio_28,
-			gpio_46
+			gpio_1_7,
+			gpio_1_6,
+			gpio_1_5,
+			gpio_1_4,
+			gpio_1_3,
+			gpio_1_2,
+			gpio_1_1,
+			gpio_1_0
 		}),
 `endif
 
@@ -316,7 +333,7 @@ module top(
 
 `ifdef WRANGLER_SWITCH
 	// user switch
-		.sw1(sw1),
+		.sw1(sw1_in),
 `endif
 
 `ifdef WRANGLER_LED
@@ -337,23 +354,23 @@ module top(
 
 
 	// debug glitching vsync
-	reg gpio_12, gpio_21, gpio_13;
-	always @(posedge hdmi_clk)
+	reg gpio_0_0, gpio_0_1, gpio_0_2;
+	always @(posedge clk_48mhz)
 	begin
-		gpio_12 <= hdmi_valid;
-		gpio_21 <= hsync;
-		gpio_13 <= vsync;
+		gpio_0_0 <= hdmi_scl;
+		gpio_0_1 <= hdmi_clk;
+		gpio_0_2 <= hdmi_clk;
 	end
+	assign gpio_0_3 = hdmi_clk;
 
 	// EDID interface is not yet exposed to the user
-	wire sda_pin = gpio_25;
-	wire scl_pin = gpio_23;
 	wire sda_out;
 	wire sda_in;
 	wire sda_enable;
 
-	tristate scl(
-		.pin(sda_pin),
+	tristate sda_buffer(
+		//.pin(hdmi_sda),
+		.pin(gpio_0_7),
 		.enable(sda_enable),
 		.data_out(sda_out),
 		.data_in(sda_in)
@@ -366,7 +383,7 @@ module top(
 	i2c_device i2c_i(
 		.clk(clk),
 		.reset(reset),
-		.scl_in(scl_pin),
+		.scl_in(hdmi_scl),
 		.sda_in(sda_in),
 		.sda_out(sda_out),
 		.sda_enable(sda_enable),
@@ -377,18 +394,3 @@ module top(
 	);
 endmodule
 
-module tristate(
-	inout pin,
-	input enable,
-	input data_out,
-	output data_in
-);
-	SB_IO #(
-		.PIN_TYPE(6'b1010_01) // tristatable output
-	) buffer(
-		.PACKAGE_PIN(pin),
-		.OUTPUT_ENABLE(enable),
-		.D_IN_0(data_in),
-		.D_OUT_0(data_out)
-	);
-endmodule

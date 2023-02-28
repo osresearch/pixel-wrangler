@@ -4,17 +4,20 @@
  */
 `default_nettype none
 `define WRANGLER_LED
+`define WRANGLER_SWITCH
 `include "top.v"
 `include "dither.v"
 
 module display(
 	input clk_48mhz,
 	input clk, // system clock, probably 12 or 24 Mhz
+	input sw1, // user switch
 
 	// Streaming HDMI interface (in 25 MHz hdmi_clk domain)
 	input hdmi_clk,
+	input hdmi_bit_clk,
 	input hdmi_valid,
-	input hdmi_reset,
+	output hdmi_reset,
 	input vsync,
 	input hsync,
 	input rgb_valid,
@@ -34,8 +37,9 @@ module display(
 	output [7:0] led_b
 );
 	wire reset = 0;
+	assign hdmi_reset = !sw1;
 
-	// pulse the RGB led. should do something with state here
+	// pulse the RGB led. shinputould do something with state here
 	assign led_r = hdmi_reset ? 8'hFF : 8'h00;
 	assign led_g = rgb_valid ? 8'h30 : 8'h00;
 	assign led_b = hdmi_valid ? 8'h00 : 8'hf0;
@@ -48,8 +52,17 @@ module display(
 	//breath breath_b(clk, rate_b, led_b);
 
 	// produce a 16 MHz clock from the 48 Mhz clock
-	wire clk_16mhz;
-	clk_div3 div3(clk_48mhz, reset, clk_16mhz);
+	wire clk_16mhz_raw;
+	clk_div3 div3(clk_48mhz, reset, clk_16mhz_raw);
+
+	// produce a 15.625 MHz from the HDMI clock (maybe)
+	reg [2:0] clk_div;
+	wire clk_15mhz = clk_div[2];
+	always @(posedge hdmi_bit_clk)
+		clk_div <= clk_div + 1;
+
+	//wire clk_16mhz = hdmi_valid ? clk_15mhz : clk_16mhz_raw;
+	wire clk_16mhz =  clk_16mhz_raw;
 
 /*
 	wire [9:0] fb_xaddr;
@@ -247,56 +260,3 @@ module mac_display(
 			out <= 1; // idle high
 	end
 endmodule
-
-module clk_div3(
-	input clk,
-	input reset,
-	output clk_out
-);
-	reg [1:0] pos_count, neg_count;
-	assign clk_out = (pos_count == 2) || (neg_count == 2);
- 
-	always @(posedge clk)
-	if (reset || pos_count == 2)
-		pos_count <= 0;
-	else
-		pos_count <= pos_count + 1;
-
-	always @(negedge clk)
-	if (reset || neg_count == 2)
-		neg_count <= 0;
-	else
-		neg_count <= neg_count + 1;
- 
-endmodule
-
-module spram_32k(
-	input clk,
-	input reset = 0,
-	input cs = 1,
-	input wen,
-	input [13:0] wr_addr,
-	input [15:0] wr_data,
-	input [3:0] wr_mask = 4'b1111,
-	input [13:0] rd_addr,
-	output [15:0] rd_data
-);
-	SB_SPRAM256KA ram(
-		// read 16 bits at a time
-		.DATAOUT(rd_data),
-		.ADDRESS(wen ? wr_addr : rd_addr),
-		.DATAIN(wr_data),
-		.MASKWREN(wr_mask),
-		.WREN(wen),
-
-		.CHIPSELECT(cs && !reset),
-		.CLOCK(clk),
-
-		// if we cared about power, maybe we would adjust these
-		.STANDBY(1'b0),
-		.SLEEP(1'b0),
-		.POWEROFF(1'b1)
-	);
-
-endmodule
-
