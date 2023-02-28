@@ -33,7 +33,7 @@ separate head:
 xrandr --output HDMI-2 --pos 350x100
 ```
 
-![Rendering of the pre-production beta board](images/pcb-3d.png)
+![LED sign from a train with the Raspberry Pi boot image](images/led-sign.jpg)
 
 There are some [problems with the v0 boards](https://github.com/osresearch/pixel-wrangler/issues/22),
 one of which reqiures a bodge wire on the i2c lines.  The 5v pullups on
@@ -62,7 +62,7 @@ don't have to cross on the PCB and must be flipped in the logic.
 
 ## Limitations
 
-![LED sign from a train with the Raspberry Pi boot image](images/led-sign.jpg)
+![Rendering of the pre-production beta board](images/pcb-3d.png)
 
 * Only "baseline video" is supported
   * 640x480 @ 60Hz
@@ -76,6 +76,8 @@ don't have to cross on the PCB and must be flipped in the logic.
 * No protection against shorts or overcurrent. Be careful!
 
 ## Dithering
+
+![256x256 Blue Noise matrix](images/bluenoise-256.png)
 
 Dithering uses Ordered Blue Noise Dithering. Pattern is from [gao-duan](https://github.com/gao-duan/BlueNoise) (MIT Licensed)
 
