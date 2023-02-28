@@ -1,14 +1,17 @@
 `ifndef _util_v_
 `define _util_v_
 
-module tristate(
+module
+tristate(
 	inout pin,
 	input enable,
 	input data_out,
 	output data_in
 );
+	parameter PULLUP = 1'b0;
 	SB_IO #(
-		.PIN_TYPE(6'b1010_01) // tristatable output
+		.PIN_TYPE(6'b1010_01), // tristatable output
+		.PULLUP(PULLUP)
 	) buffer(
 		.PACKAGE_PIN(pin),
 		.OUTPUT_ENABLE(enable),
