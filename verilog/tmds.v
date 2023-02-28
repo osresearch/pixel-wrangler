@@ -246,10 +246,11 @@ module tmds_clock_cross(
 	reg [9:0] d0;
 	reg [9:0] d1;
 	reg [9:0] d2;
-	wire [9:0] d0_rd;
-	wire [9:0] d1_rd;
-	wire [9:0] d2_rd;
+	reg [9:0] d0_rd;
+	reg [9:0] d1_rd;
+	reg [9:0] d2_rd;
 
+/*
 	always @(posedge reset or posedge bit_clk)
 	if (reset)
 	begin
@@ -278,6 +279,21 @@ module tmds_clock_cross(
 		.rd_addr(1'b0),
 		.rd_data({d0_rd,d1_rd,d2_rd})
 	);
+*/
+	always @(posedge bit_clk)
+	begin
+		if (bit_counter >= 4'h4)
+			bit_counter <= 0;
+		else
+			bit_counter <= bit_counter + 1;
+
+		if (bit_counter == phase)
+		begin
+			d0_rd <= d0_data;
+			d1_rd <= d1_data;
+			d2_rd <= d2_data;
+		end
+	end
 
 	always @(posedge clk)
 	begin
