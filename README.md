@@ -1,6 +1,6 @@
 # Pixel Wrangler: HDMI to whatever
 
-![Rendering of the pre-production beta board](images/pcb-3d.png)
+![Two assembled v0 pixel wrangler boards](images/pcb-v0.jpg)
 
 The Pixel Wrangler is a tool for converting HDMI video into anything else.
 It uses an ice40up5k FPGA to decode the video stream and stores a section
@@ -33,6 +33,8 @@ separate head:
 xrandr --output HDMI-2 --pos 350x100
 ```
 
+![Rendering of the pre-production beta board](images/pcb-3d.png)
+
 There are some [problems with the v0 boards](https://github.com/osresearch/pixel-wrangler/issues/22),
 one of which reqiures a bodge wire on the i2c lines.  The 5v pullups on
 the source side of the HDMI i2c also might cause problems in the FPGA,
@@ -60,6 +62,8 @@ don't have to cross on the PCB and must be flipped in the logic.
 
 ## Limitations
 
+![LED sign from a train with the Raspberry Pi boot image](images/led-sign.jpg)
+
 * Only "baseline video" is supported
   * 640x480 @ 60Hz
   * 25 MHz maximum pixel clock
@@ -70,17 +74,6 @@ don't have to cross on the PCB and must be flipped in the logic.
   * 256x128x24
 * 3.3V IO on GPIO pins
 * No protection against shorts or overcurrent. Be careful!
-
-
-## Prototyping
-
-![Prototype on a breadboard](images/breadboard.jpg)
-
-A prototype is working on an upduino board with an HDMI breakout adapter.
-It's really surprising that it works as well as it does.  Without EDID
-support it requires a system that allows the video mode to be forced;
-the ordered boards have the i2c lines connected and the EDID emulator
-needs to be written.
 
 ## Dithering
 
