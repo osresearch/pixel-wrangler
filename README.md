@@ -45,6 +45,12 @@ so right now only the blue data on channel D0 is used.
 This might be a clock phase issue or it might be a larger problem;
 more research is needed.
 
+The USB Micro is directly connected to the ice40up5k and the flash
+can be loaded with [TinyFPGA bootloader `pixelwrangler` branch](https://github.com/osresearch/TinyFPGA-Bootloader/tree/pixelwrangler)
+to allow new bit streams to be uploaded into the device.
+The [`multiboot.bin`](image/multiboot.bin) is prebuilt and can
+be flashed with your SPI flasher of choice and then the `bootmeta.json`
+and `boardmeta.json` can be written into the flash security pages.
 
 ## PCB design
 
@@ -74,18 +80,25 @@ don't have to cross on the PCB and must be flipped in the logic.
   * 256x128x24
 * 3.3V IO on GPIO pins
 * No protection against shorts or overcurrent. Be careful!
+* Boot loader requires button press to reset
+* There isn't any USB support in the bit stream tree yet.
 
 ## Dithering
 
 ![256x256 Blue Noise matrix](images/bluenoise-256.png)
 
-Dithering uses Ordered Blue Noise Dithering. Pattern is from [gao-duan](https://github.com/gao-duan/BlueNoise) (MIT Licensed)
+Dithering uses Ordered Blue Noise Dithering. Pattern is from [gao-duan](https://github.com/gao-duan/BlueNoise) (MIT Licensed).
+Currently limited to a 64x64 size pattern; ideally a larger RGB
+image could be loaded from the SPI flash at boot time, which would
+allow three channel dithering without repeating across the screen.
 
 ## Todo
 
 * [X] Finish board design -- ordered!
-* [X] EDID ROM
+* [X] EDID ROM and i2c interface
 * [X] DDR on input for ~~high-res~~ inputs
-* [ ] Documentation on writing new interfaces
 * [X] Classic Mac mode -- working!
+* [ ] Fix TMDS channel D1 and D2 decoding
+* [ ] Documentation on writing new interfaces
 * [ ] LED strip mode
+* [ ] Load larger dithering pattern from flash?
