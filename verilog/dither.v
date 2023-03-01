@@ -128,19 +128,19 @@ module dither(
 	// for a pure white and avoids a larger comparison in
 	// the clocked block.
 	//wire [9:0] sum = r + g + b + noise_value + 1;
-	wire [8:0] r_sum = r + noise_value0;
-	wire [8:0] b_sum = b + noise_value1;
-	wire [8:0] g_sum = g + noise_value2;
+	wire [8:0] r_sum = r + noise_value0 + 1;
+	wire [8:0] b_sum = b + noise_value0 + 1;
+	wire [8:0] g_sum = g + noise_value0 + 1;
 
 	// r is not full range?
-	wire r_dither = (r_sum >= 9'd255);
-	wire b_dither = (b_sum >= 9'd255);
-	wire g_dither = (g_sum >= 9'd255);
+	wire r_dither = (r_sum > 9'd256);
+	wire b_dither = (b_sum > 9'd256);
+	wire g_dither = (g_sum > 9'd256);
 
 	wire dither_bit = 0
-		//| r_dither
+		| r_dither
 		| b_dither
-		//| g_dither
+		| g_dither
 		;
 
 	always @(posedge clk)

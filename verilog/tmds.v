@@ -376,13 +376,13 @@ module tmds_raw_decoder(
 		.out(d0_data)
 	);
 
-	tmds_shift_register #(.INVERT(INVERT[1])) d1_shift(
+	tmds_shift_register_ddr #(.INVERT(INVERT[1])) d1_shift(
 		.bit_clk(bit_clk),
 		.in_p(d1_p),
 		.out(d1_data)
 	);
 
-	tmds_shift_register #(.INVERT(INVERT[2])) d2_shift(
+	tmds_shift_register_ddr #(.INVERT(INVERT[2])) d2_shift(
 		.bit_clk(bit_clk),
 		.in_p(d2_p),
 		.out(d2_data)
