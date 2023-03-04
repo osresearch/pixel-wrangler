@@ -43,6 +43,9 @@ module display(
 	assign led_r = hdmi_reset ? 8'hFF : 8'h00;
 	assign led_g = rgb_valid ? 8'h30 : 8'h00;
 	assign led_b = hdmi_valid ? 8'h00 : 8'hf0;
+
+	assign gpio_bank_1[3] = vsync;
+
 	//wire [7:0] rate_r = 8'h0F;
 	//wire [7:0] rate_g = 8'h1F;
 	//wire [7:0] rate_b = 8'h3F;
