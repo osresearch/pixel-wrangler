@@ -19,6 +19,10 @@
 `define WRANGLER_GPIO
 `endif
 
+`ifdef WRANGLER_UART_TX
+`define WRANGLER_UART
+`endif
+
 /*
  * You do not need to instantiate all of these interfaces!
  * These are the ones that are provided by the top module
@@ -169,10 +173,10 @@ module top(
 		.clk_48mhz(clk_48mhz),
 		.clk(clk),
 		.reset(reset),
-		.serial_txd(serial_txd),
+		.serial_txd(`WRANGLER_UART_TX),
 		.uart_txd(uart_txd),
 		.uart_txd_strobe(uart_txd_strobe),
-		.uart_rxd(uart_rxd),
+		.uart_rxd(`WRANGLER_UART_RX),
 		.uart_rxd_strobe(uart_rxd_strobe)
 	);
 `endif
@@ -352,16 +356,6 @@ module top(
 `endif
 	);
 
-
-	// debug glitching vsync
-	reg gpio_0_0, gpio_0_1, gpio_0_2;
-	always @(posedge clk_48mhz)
-	begin
-		gpio_0_0 <= hdmi_scl;
-		gpio_0_1 <= hdmi_clk;
-		gpio_0_2 <= hdmi_clk;
-	end
-	assign gpio_0_3 = hdmi_clk;
 
 	// EDID interface is not yet exposed to the user
 	wire sda_out;
