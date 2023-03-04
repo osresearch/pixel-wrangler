@@ -30,11 +30,13 @@ PNR ?= $(ICEPATH)nextpnr-ice40 -f
 
 %.asc: $(PIN_SRC) %.json
 	$(PNR) \
+		--timing-allow-fail \
 		--$(DEVICE) \
 		--package $(FOOTPRINT) \
 		--asc $@ \
 		--pcf $(PIN_SRC) \
 		--json $(basename $@).json \
+		--pre-pack clocks.py \
 
 %.gui: %.json
 	$(PNR) --gui --$(DEVICE) --pcf $(PIN_SRC) --json $<
