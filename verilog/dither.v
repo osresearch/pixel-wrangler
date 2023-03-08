@@ -132,10 +132,16 @@ module dither(
 	wire [8:0] b_sum = b + noise_value0 + 1;
 	wire [8:0] g_sum = g + noise_value0 + 1;
 
-	// r is not full range?
-	wire r_dither = (r_sum > 9'd256);
-	wire b_dither = (b_sum > 9'd256);
-	wire g_dither = (g_sum > 9'd256);
+`undef TRIANGLE_TEST
+`ifdef TRIANGLE_TEST
+	wire r_dither = r_sum[8] && (y <= x); // >= 256
+	wire b_dither = b_sum[8] && (1);
+	wire g_dither = g_sum[8] && (y >= x);
+`else
+	wire r_dither = r_sum[8];
+	wire b_dither = b_sum[8];
+	wire g_dither = g_sum[8];
+`endif
 
 	wire dither_bit = 0
 		| r_dither
@@ -151,6 +157,7 @@ module dither(
 		noise_value1 <= noise_value0;
 		noise_value0 <= noise[noise_addr];
 
+		//out <= dither_bit & (x > y);
 		out <= dither_bit;
 	end
 endmodule
