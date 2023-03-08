@@ -9,7 +9,7 @@ FOOTPRINT := $(FOOTPRINT-$(BOARD))
 PIN_SRC := $(PIN_SRC-$(BOARD))
 
 
-PNR ?= $(ICEPATH)nextpnr-ice40 -f
+PNR ?= $(ICEPATH)nextpnr-ice40
 .SECONDARY:
 
 # this works for the upduino; the pixelwrangler board uses tinyprog
@@ -30,7 +30,6 @@ PNR ?= $(ICEPATH)nextpnr-ice40 -f
 
 %.asc: $(PIN_SRC) %.json
 	$(PNR) \
-		--timing-allow-fail \
 		--$(DEVICE) \
 		--package $(FOOTPRINT) \
 		--asc $@ \
