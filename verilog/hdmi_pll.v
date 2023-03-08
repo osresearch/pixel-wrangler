@@ -11,6 +11,7 @@
  */
 
 module hdmi_pll(
+	input reset,
 	input  clock_in,
 	output clock_out,
 	output locked,
@@ -24,11 +25,11 @@ SB_PLL40_CORE #(
 		.DIVQ(3'b010),		// DIVQ =  2
 		.FILTER_RANGE(3'b010),	// FILTER_RANGE = 2
 		//.DELAY_ADJUSTMENT_MODE_FEEDBACK("DYNAMIC")
-		//.DELAY_ADJUSTMENT_MODE_FEEDBACK("FIXED"),
-		//.FDA_RELATIVE(15) // 3 sometimes works?
+		.DELAY_ADJUSTMENT_MODE_FEEDBACK("FIXED"),
+		.FDA_RELATIVE(12) // 3 sometimes works?
 	) uut (
 		.LOCK(locked),
-		.RESETB(1'b1),
+		.RESETB(~reset),
 		.BYPASS(1'b0),
 		.REFERENCECLK(clock_in),
 		.PLLOUTGLOBAL(clock_out),

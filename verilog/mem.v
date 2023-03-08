@@ -1,3 +1,6 @@
+`ifndef _mem_v_
+`define _mem_v_
+
 /* Ensure RAM-like behaviour */
 module ram(
 	// read domain
@@ -29,3 +32,5 @@ module ram(
 			mem[wr_addr] <= wr_data;
 endmodule
 
+
+`endif

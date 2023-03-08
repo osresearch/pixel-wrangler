@@ -12,12 +12,14 @@ module display(
 	input clk_48mhz,
 	input clk, // system clock, probably 12 or 24 Mhz
 	input sw1, // user switch
+	input reset,
 
 	// Streaming HDMI interface (in 25 MHz hdmi_clk domain)
 	input hdmi_clk,
 	input hdmi_bit_clk,
 	input hdmi_valid,
-	output hdmi_reset,
+	input hdmi_reset,
+	output hdmi_user_reset,
 	input vsync,
 	input hsync,
 	input rgb_valid,
@@ -36,13 +38,12 @@ module display(
 	output [7:0] led_g,
 	output [7:0] led_b
 );
-	wire reset = 0;
-	assign hdmi_reset = !sw1;
+	assign hdmi_user_reset = !sw1;
 
 	// pulse the RGB led. shinputould do something with state here
 	assign led_r = hdmi_reset ? 8'hFF : 8'h00;
 	assign led_g = rgb_valid ? 8'h30 : 8'h00;
-	assign led_b = hdmi_valid ? 8'h00 : 8'hf0;
+	assign led_b = hdmi_reset ? 8'hFF : 8'h00;
 
 	assign gpio_bank_1[3] = vsync;
 
@@ -107,6 +108,7 @@ module display(
 	reg [8:0] fb_yaddr;
 	reg [15:0] fb_bits;
 
+	//wire [13:0] rd_addr = { fb_yaddr[8:0], fb_xaddr[8:4] };
 	reg [13:0] rd_addr;
 	//reg video_bit;
 
@@ -126,7 +128,9 @@ module display(
 
 	// video comes from the read buffer on the clock immediately
 	// after a read, otherwise it comes from the shift register
-	wire video_bit = last_read_active ? rd_data[15] : fb_bits[15];
+	wire [15:0] video_bits = last_read_active ? rd_data : fb_bits;
+	//wire video_bit = video_bits[15];
+	reg video_bit;
 
 	reg last_read_active;
 	always @(posedge clk_16mhz)
@@ -138,12 +142,12 @@ module display(
 		if (fb_xaddr[3:0] == 4'b0000) begin
 			// need to read a new set of pixels
 			last_read_active <= 1;
- 			rd_addr <= { fb_yaddr[8:0], fb_xaddr[8:4] };
+			rd_addr <= { fb_yaddr[8:0], fb_xaddr[8:4] };
 
 			// delay any writes that might be happening
 			// since reading from the frame buffer has
 			// real-time priority
-			mono_bits_ready_delay <= mono_bits_ready;
+			//mono_bits_ready_delay <= mono_bits_ready;
 		end else begin
 			// allow any writes or delayed writes to happen
 			// when they are in the active part of the display
@@ -152,10 +156,8 @@ module display(
 		end
 
 		// refresh the buffer from the read or shift the buffer
-		if (last_read_active)
-			fb_bits[15:0] <= { rd_data[14:0], 1'b0 };
-		else
-			fb_bits[15:0] <= { fb_bits[14:0], 1'b0 };
+		fb_bits[15:0] <= { video_bits[14:0], 1'b0 };
+		video_bit <= video_bits[15];
 	end
 
 
@@ -196,14 +198,14 @@ module mac_display(
 );
 	parameter ACTIVE_WIDTH = 512;
 	parameter ACTIVE_HEIGHT = 342;
-	parameter ACTIVE_XOFFSET = 192;
+	parameter ACTIVE_XOFFSET = 170;
 	parameter ACTIVE_YOFFSET = 48;
 
-	parameter TOTAL_WIDTH = 720;
-	parameter TOTAL_HEIGHT = ACTIVE_HEIGHT + ACTIVE_YOFFSET + 1; //384;
+	parameter TOTAL_WIDTH = 683;
+	parameter TOTAL_HEIGHT = ACTIVE_HEIGHT + ACTIVE_YOFFSET; //384;
 	parameter VSYNC_LINES = 6; // how many hsyncs during vsync low
-	parameter VSYNC_OFFSET = 128; // edge of vsync relative to hsync
-	parameter HSYNC_OFFSET = 294; // rising edge of the hsync line
+	parameter VSYNC_OFFSET = 128; // edge of vsync relative to hsync (in pixels)
+	parameter HSYNC_OFFSET = 294; // rising edge of the hsync line (in pixels)
 
 	reg hsync;
 	reg vsync;
@@ -217,11 +219,13 @@ module mac_display(
 	// note that the "in active window" triggers one pixel
 	// *after* xscan enters it, since xaddr is a request for
 	// a pixel and it takes one clock for the framebuffer to be ready
+	//reg in_active_window = 0;
 	wire in_active_window = 1
-		&& ACTIVE_XOFFSET < xscan
-		&& xscan <= ACTIVE_XOFFSET + ACTIVE_WIDTH
-		&& ACTIVE_YOFFSET < yscan
-		&& yscan <= ACTIVE_YOFFSET + ACTIVE_HEIGHT;
+			&& ACTIVE_XOFFSET + 2 < xscan
+			&& xscan <= ACTIVE_XOFFSET + ACTIVE_WIDTH + 1
+			&& ACTIVE_YOFFSET < yscan
+			&& yscan <= ACTIVE_YOFFSET + ACTIVE_HEIGHT;
+
 
 	always @(posedge clk_16mhz)
 	if (reset)

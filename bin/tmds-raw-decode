@@ -1,0 +1,109 @@
+#!/usr/bin/python3
+# Decode the three raw TMDS channels and clock from a decode.bin dump
+import os
+import sys
+from struct import unpack
+
+time = 0
+
+specials = {
+0b1101010100: "Shv",
+0b0010101011: "SHv",
+0b0101010100: "ShV",
+0b1010101011: "SHV",
+0b1010011100: "T00",
+0b1001100011: "T01",
+0b1011100100: "T02",
+0b1011100010: "T03",
+0b0101110001: "T04",
+0b0100011110: "T05",
+0b0110001110: "T06",
+0b0100111100: "T07",
+0b1011001100: "T08",
+0b0100111001: "T09",
+0b0110011100: "T0A",
+0b1011000110: "T0B",
+0b1010001110: "T0C",
+0b1001110001: "T0D",
+0b0101100011: "T0E",
+0b1011000011: "T0F",
+}
+
+
+def tmds(x):
+#	wire invert = in[9];
+#	wire use_xor = in[8];
+#	wire [7:0] in_bits = invert ? ~in[7:0] : in;
+#	wire [7:0] in_xor = { in_bits[6:0] ^ in_bits[7:1], in_bits[0] };
+#	wire [7:0] in_xnor = { in_bits[6:0] ^~ in_bits[7:1], in_bits[0] };
+#	wire [7:0] data_out = use_xor ? in_xor : in_xnor;
+
+	invert = (x >> 9) & 1;
+	use_xor = (x >> 8) & 1;
+
+	x = (x & 0xFF)
+	if invert:
+		x = x ^ 0xFF
+
+	x = (x ^ (x << 1)) & 0xFF
+
+	if not use_xor:
+		x ^= 0xFE
+
+	return x
+
+	
+
+def decode(b):
+	global time
+	cycle = (b >> 7) & 1
+	clk = (b >> 6) & 1
+
+	# collect the bit streams
+	d0 = (b >>  0) & 0x3FF
+	d1 = (b >> 10) & 0x3FF
+	d2 = (b >> 20) & 0x3FF
+	valid = (b >> 30) & 3
+
+	d0_str = specials.get(d0, "%03x" % (d0))
+	d1_str = specials.get(d1, "%03x" % (d1))
+	d2_str = specials.get(d2, "%03x" % (d2))
+
+	print("%08x %s %s %s %s %02x %02x %02x" % (
+		time, valid,
+		d0_str, d1_str, d2_str,
+		tmds(d0), tmds(d1), tmds(d2),
+	))
+	time += 1
+
+d2 = 0
+d1 = 0
+d0 = 0
+last_clk = 0
+
+with open(sys.argv[1], "rb") as f:
+	while True:
+		bits = ord(f.read(1))
+		clk = (bits >> 7) & 1
+		valid = (bits >> 6) & 1
+		d2_bits = (bits >> 4) & 3
+		d1_bits = ((bits >> 2) & 3) ^ 3 # invert
+		d0_bits = ((bits >> 0) & 3) ^ 3 # invert
+
+		d2 = ((d2 << 2) | d2_bits) & 0x3FF
+		d1 = ((d1 << 2) | d1_bits) & 0x3FF
+		d0 = ((d0 << 2) | d0_bits) & 0x3FF
+	
+		if last_clk == clk:
+			edge = " "
+		elif clk:
+			edge = "+"
+		else:
+			edge = "-"
+		last_clk = clk
+
+		bit_str = format(bits, "08b")
+		d0_str = format(d0, "010b")
+		d1_str = format(d1, "010b")
+		d2_str = format(d2, "010b")
+		print("%s %s %03x %03x %03x  %s %s %s" % (bit_str, edge, d0, d1, d2, d0_str, d1_str, d2_str))

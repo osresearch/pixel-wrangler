@@ -110,4 +110,17 @@ module edge_detect(
 		last <= in;
 endmodule
 
+
+module shifter(
+	input clk,
+	input in,
+	output out
+);
+	parameter BITS = 2;
+	reg [BITS-1:0] sr;
+	reg out;
+	always @(posedge clk)
+		{ out, sr } <= { sr, in };
+endmodule
+
 `endif

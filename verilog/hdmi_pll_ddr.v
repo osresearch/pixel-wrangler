@@ -28,11 +28,15 @@ module hdmi_pll(
 	input  clock_in,
 	output clock_out,
 	output locked,
-	input reset
+	input reset,
+	input [3:0] delay
 	);
 
 	// total guess that seems to work well
-	parameter DELAY = 4'd8;
+	//  0 == some static
+	//  4 == no static?
+	// 15 == badly distorted video
+	parameter DELAY = 4'd0;
 
 SB_PLL40_CORE #(
 		.FEEDBACK_PATH("SIMPLE"),
@@ -40,12 +44,14 @@ SB_PLL40_CORE #(
 		.DIVF(7'd39),	// DIVF = 4 for non-simple
 		.DIVQ(3'b011),		// DIVQ =  3
 		.FILTER_RANGE(3'b010),	// FILTER_RANGE = 2
+		//.DELAY_ADJUSTMENT_MODE_FEEDBACK("DYNAMIC")
 		.FDA_FEEDBACK(DELAY),
 		.DELAY_ADJUSTMENT_MODE_FEEDBACK("FIXED")
 	) uut (
 		.LOCK(locked),
 		.RESETB(~reset),
 		.BYPASS(1'b0),
+		//.DYNAMICDELAY({4'b0, delay}),
 		.REFERENCECLK(clock_in),
 		.PLLOUTGLOBAL(clock_out)
 		);

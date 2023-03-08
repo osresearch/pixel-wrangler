@@ -274,13 +274,15 @@ module top(
 	display display_(
 		.clk_48mhz(clk_48mhz),
 		.clk(clk),
+		.reset(reset),
 
 `ifdef WRANGLER_HDMI
 		// Streaming HDMI interface (in 25 MHz hdmi_clk domain)
 		.hdmi_clk(hdmi_clk),
 		.hdmi_bit_clk(hdmi_bit_clk),
 		.hdmi_valid(hdmi_valid),
-		.hdmi_reset(user_hdmi_reset),
+		.hdmi_reset(hdmi_reset),
+		.hdmi_user_reset(user_hdmi_reset),
 		.vsync(vsync),
 		.hsync(hsync),
 		.rgb_valid(rgb_valid),
