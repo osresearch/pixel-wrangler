@@ -151,7 +151,7 @@ module top(
 		.out_raw(tmds_raw)
 	);
 
-`define TMDS_RAW
+//`define TMDS_RAW
 `ifdef TMDS_RAW
 	// just output a stream of TMDS data as it comes in
 
@@ -253,6 +253,7 @@ module top(
 
 
 	wire [11:0] hdmi_xaddr, hdmi_yaddr;
+	wire hsync, vsync;
 
 	hdmi_stream hdmi_s(
 		// inputs
@@ -265,9 +266,9 @@ module top(
 		// outputs
 		.xaddr(hdmi_xaddr),
 		.yaddr(hdmi_yaddr),
-/*
 		.vsync(vsync),
 		.hsync(hsync),
+/*
 		.rgb_valid(rgb_valid),
 		.r(r),
 		.g(g),
@@ -293,12 +294,17 @@ module top(
 		&& 100 <= hdmi_xaddr && hdmi_xaddr < 200
 		&& 200 <= hdmi_yaddr && hdmi_yaddr < 300;
 
+	assign gpio_1_1 = hsync;
+	assign gpio_1_2 = vsync;
+	assign gpio_1_3 = hdmi_valid;
+
 	always @(posedge hdmi_clk)
 	begin
 		wr_enable <= 0;
 		wr_data <= { hdmi_reset, hdmi_valid, tmds_d2, tmds_d1, tmds_d0 };
 
-		if (wr_addr != 11'h7FF && in_active_window)
+		//if (wr_addr != 11'h7FF && in_active_window)
+		if (wr_addr != 11'h7FF)
 		begin
 			wr_enable <= 1;
 			wr_addr <= wr_addr + 1;

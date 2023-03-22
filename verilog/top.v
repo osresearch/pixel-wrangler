@@ -96,9 +96,8 @@ module top(
 	output gpio_0_2,
 	output gpio_0_3,
 	output gpio_0_4,
-	output gpio_0_5,
-	output gpio_0_6,
-	//output gpio_0_7,
+	inout gpio_0_5, // temporarily used for tmds phase reset
+	inout gpio_0_6, // temporarily used for pll reset banging
 	inout gpio_0_7, // temporarily bodged to hdmi_sda
 
 	output gpio_1_0,
@@ -151,11 +150,25 @@ module top(
 	assign led_b = 1;
 `endif
 
-	wire sw1_in;
+	wire sw1_in, sw2_in, sw3_in;
 	tristate #(.PULLUP(1)) sw1_buffer(
 		.pin(sw1),
 		.enable(0),
 		.data_in(sw1_in),
+		.data_out(1'b0)
+	);
+
+	tristate #(.PULLUP(1)) sw2_buffer(
+		.pin(gpio_0_6),
+		.enable(0),
+		.data_in(sw2_in),
+		.data_out(1'b0)
+	);
+
+	tristate #(.PULLUP(1)) sw3_buffer(
+		.pin(gpio_0_5),
+		.enable(0),
+		.data_in(sw3_in),
 		.data_out(1'b0)
 	);
 
@@ -216,19 +229,23 @@ module top(
 		else
 			invalid_counter <= invalid_counter == 0 ? 0 : invalid_counter - 1;
 
-		hdmi_reset <= invalid_counter[20] || user_hdmi_reset;
+		hdmi_reset <= invalid_counter[20] || user_hdmi_reset || !sw2_in;
 	end
+
+	wire [4:0] phase_shift = 0;
 
 	tmds_decoder #(
 		.INVERT(3'b011)
 	) tmds_decoder_i(
 		.reset(hdmi_reset),
+		.phase_step(~sw3_in),
 
 		// physical inputs
 		.clk_p(tmds_clkp),
 		.d0_p(tmds_d0n),
 		.d1_p(tmds_d1n),
 		.d2_p(tmds_d2p),
+		.phase_shift(phase_shift),
 
 		// outputs
 		.hdmi_clk(hdmi_clk),
@@ -298,14 +315,14 @@ module top(
 `ifdef WRANGLER_GPIO
 	// GPIO banks for output
 		.gpio_bank_0({
-			gpio_0_0,
-			gpio_0_1,
-			gpio_0_2,
-			gpio_0_3,
-			gpio_0_4,
-			gpio_0_5,
+			gpio_0_7,
 			gpio_0_6,
-			gpio_0_7
+			gpio_0_5,
+			gpio_0_4,
+			gpio_0_3,
+			gpio_0_2,
+			gpio_0_1,
+			gpio_0_0
 		}),
 
 		.gpio_bank_1({
@@ -388,5 +405,6 @@ module top(
 		.data_addr(edid_read_addr),
 		.rd_data(edid[edid_read_addr])
 	);
+
 endmodule
 

@@ -17,7 +17,14 @@
  * Only Channel 0 (Blue) has the synchronization bits and the
  * TERC4 data during the data island period.
  */
+`define TMDS_DDR
+
+`ifdef TMDS_DDR
 `include "hdmi_pll_ddr.v"
+`else
+`include "hdmi_pll.v"
+`endif
+
 `include "dpram.v"
 
 module tmds_8b10b_decoder(
@@ -126,28 +133,37 @@ module lvds_ddr_input(
 	input in_p,
 	output [1:0] out
 );
-	wire [1:0] out;
-	reg [1:0] in;
+	wire [1:0] in;
 
 	SB_IO #(
-		.PIN_TYPE(6'b000000),
+`ifdef TMDS_DDR
+		.PIN_TYPE(6'b0000_00), // DDR input
+`else
+		.PIN_TYPE(6'b0000_11), // latched and registered at the pin
+`endif
 		.IO_STANDARD("SB_LVDS_INPUT")
 	) diff_io (
 		.PACKAGE_PIN(in_p),
 		.INPUT_CLK(clk),
-		.D_IN_0(out[0]), // pos edge of bit_clk
-		.D_IN_1(out[1])  // neg edge of bit_clk
+		.D_IN_0(in[0]), // pos edge of bit_clk
+`ifdef TMDS_DDR
+		.D_IN_1(in[1])  // neg edge of bit_clk
+`endif
 	);
 
-/*
-	// invert both of them so that there is a constant delay
-	// between the inputs and the latches. also seems to
-	// produce a better timing result, so leave it in?
+`define BUFFER_LVDS
+`ifdef BUFFER_LVDS
+	// ensuring that there is a registered copy seems to produce better
+	// timing results than directly using the one in the pin
+	reg [1:0] out;
 	always @(posedge clk)
 		out[0] <= ~in[0];
 	always @(negedge clk)
 		out[1] <= ~in[1];
-*/
+`else
+	assign out = in;
+`endif
+
 endmodule
 
 
@@ -159,7 +175,8 @@ module tmds_clk_pll(
 	input clk_p,
 	output hdmi_clk,
 	output bit_clk,
-	output locked
+	output locked,
+	input [4:0] phase_shift = 0 // ones-complement signed
 );
 	SB_GB_IO #(
 		.PIN_TYPE(6'b000000),
@@ -169,11 +186,16 @@ module tmds_clk_pll(
 		.GLOBAL_BUFFER_OUTPUT(hdmi_clk)
 	);
 
-	hdmi_pll pll(
+	wire [3:0] delay = phase_shift[4] ? phase_shift[3:0] : 4'b0;
+	wire [3:0] advance = phase_shift[4] ? 4'b0 : ~phase_shift[3:0];
+
+	hdmi_pll #(.DELAY(10), .ADVANCE(0))
+	pll(
 		.clock_in(hdmi_clk),
 		.clock_out(bit_clk),
 		.locked(locked),
-		.reset(reset)
+		.reset(reset),
+		.delay({delay,advance})
 	);
 endmodule
 
@@ -189,6 +211,7 @@ module tmds_ddr_phy(
 	input d0_p,
 	input d1_p,
 	input d2_p,
+	input [4:0] phase_shift = 0,
 	output bit_clk,
 	output hdmi_clk,
 	output hdmi_locked,
@@ -196,13 +219,90 @@ module tmds_ddr_phy(
 	output [1:0] d1_raw,
 	output [1:0] d2_raw
 );
+	wire hdmi_clk_raw; // unused since we resynth our own clock
+
 	tmds_clk_pll tmds_clk_pll_i(
-		.reset(reset),
+		.reset(reset || phase_reset),
 		.clk_p(clk_p),
-		.hdmi_clk(hdmi_clk),
+		.hdmi_clk(hdmi_clk_raw),
 		.bit_clk(bit_clk),
-		.locked(hdmi_locked)
+		.locked(hdmi_locked),
+		.phase_shift(phase_shift)
 	);
+
+	// re-synthesize the HDMI clock from the PLL'ed clock
+	// so that it is precisely in phase to avoid CDC issues
+	reg [3:0] clk_div = 0;
+`ifdef TMDS_DDR
+	wire clk_overflow = (clk_div == 4'h4);
+`else
+	wire clk_overflow = (clk_div == 4'h9);
+`endif
+
+/*
+	reg hdmi_clk;
+	always @(posedge bit_clk)
+	begin
+		clk_div <= clk_div + 1;
+		hdmi_clk <= clk_div == 4'b0000;
+
+		if (clk_overflow)
+			clk_div <= 0;
+	end
+*/
+	assign hdmi_clk = hdmi_clk_raw;
+
+	reg phase_reset = 0;
+`ifdef 0
+	reg [20:0] error_count = 0;
+	always @(posedge hdmi_clk_raw)
+	begin
+/*
+		if (phase_reset)
+		begin
+			error_count <= error_count - 7;
+			if (error_count > 15)
+				phase_reset <= 0;
+		end else
+*/
+		if (hdmi_locked)
+		begin
+			if (bit_clk)
+				error_count <= error_count + 5;
+			else
+			if (error_count != 0)
+				error_count <= error_count - 1;
+
+			if (error_count[20])
+			begin
+				phase_shift <= phase_shift + 1;
+				error_count <= 0;
+			end
+		end
+	end
+`endif
+/*
+	reg [2:0] high_count = 0;
+	always @(posedge bit_clk)
+	begin
+		high_count <= 0;
+		phase_reset <= 0;
+
+		if (hdmi_clk_raw)
+			high_count <= high_count + 1;
+
+		if (high_count == 3)
+			error_count <= error_count + 1;
+			phase_reset <= 1;
+	end
+*/
+		
+/*
+	assign hdmi_clk = hdmi_clk_raw;
+*/
+
+//101000000001011111101010000000010111111010
+//101000000001011111101010000000010111111010
 
 	lvds_ddr_input lvds0(
 		.clk(bit_clk),
@@ -223,27 +323,102 @@ module tmds_ddr_phy(
 	);
 endmodule
 
+/*
+ * built a 8 bit wide register packed into a single ice40 LC.
+ */
+module ice40_reg8(
+	input clk,
+	input enable = 1,
+	input [7:0] in,
+	output [7:0] out
+);
+	parameter LOCATION = "";
+
+`define DO_SB_LOCATION
+`ifdef DO_SB_LOCATION
+	(* BEL={LOCATION,"/lc0"} *)
+	SB_DFFE buf0( .D(in[0]), .C(clk), .Q(out[0]), .E(enable));
+
+	(* BEL={LOCATION,"/lc1"} *)
+	SB_DFFE buf1( .D(in[1]), .C(clk), .Q(out[1]), .E(enable));
+
+	(* BEL={LOCATION,"/lc2"} *)
+	SB_DFFE buf2( .D(in[2]), .C(clk), .Q(out[2]), .E(enable));
+
+	(* BEL={LOCATION,"/lc3"} *)
+	SB_DFFE buf3( .D(in[3]), .C(clk), .Q(out[3]), .E(enable));
+
+	(* BEL={LOCATION,"/lc4"} *)
+	SB_DFFE buf4( .D(in[4]), .C(clk), .Q(out[4]), .E(enable));
+
+	(* BEL={LOCATION,"/lc5"} *)
+	SB_DFFE buf5( .D(in[5]), .C(clk), .Q(out[5]), .E(enable));
+
+	(* BEL={LOCATION,"/lc6"} *)
+	SB_DFFE buf6( .D(in[6]), .C(clk), .Q(out[6]), .E(enable));
+
+	(* BEL={LOCATION,"/lc7"} *)
+	SB_DFFE buf7( .D(in[7]), .C(clk), .Q(out[7]), .E(enable));
+`else
+	reg [7:0] out;
+	always @(posedge clk)
+		if (enable)
+			out <= in;
+`endif
+endmodule
+
+/*
+ * built a 8 deep shift register packed into a single ice40 LC.
+ * out[0] is the newest, out[7] is the oldest.
+ */
+module ice40_shift8(
+	input clk,
+	input in,
+	input enable = 1,
+	output [7:0] out
+);
+	parameter LOCATION = "";
+	wire [7:0] next = { out[6:0], in };
+
+`ifdef DO_SB_LOCATION
+	ice40_reg8 #(.LOCATION(LOCATION))
+	sr(
+		.clk(clk),
+		.in(next),
+		.out(out),
+		.enable(enable)
+	);
+`else
+	reg [7:0] out;
+	always @(posedge clk)
+		if (enable)
+			out <= next;
+`endif
+endmodule
+
 
 /*
  * Deserialize 10 input bits into a 10-bit register.
  *
- * This uses a LVDS DDR input to capture two bits per clock,
- * using a 5x PLL off the HDMI clock.  To transfer them to
- * the HDMI clock domain, it uses a dual port block ram
- * configured with a 2-bit write port and 16-bit read port.
- * This allows individual bits to be written, and then
- * an entire 10-bit tmds word to be read.
+ * Unfortunately this needs some special attention since
+ * it is using the DDR input pins (via a 5x PLL), which means
+ * that the clock for the in_raw[1] pin is negedge.
+ * A three stage shift register is used to try to bring this
+ * bit into the posedge domain.
  *
- * To avoid overwriting the one that the HDMI clock domain
- * is reading, it alternates between address 0 and 1 in
- * the 16-bit address space.
+ * To try to ensure that everything can run quickly, the logic
+ * cells are hard coded to be close to the input pins.
  *
- * TODO: move write address stuff to outside
+ * The buffers require two full logic cells (3 buffer, 5 shift)
+ * and then one for the output copy.
+ * 2 * (4 buffer + 5 shift + 5 copy) + 10
  */
 module tmds_shift_register_ddr(
 	input reset,
 	input hdmi_clk,
 	input bit_clk,
+	input bit_clk_180,
+	input latch_enable,
 	input [1:0] in_raw,
 	output [BITS-1:0] out,
 	output [1:0] out_raw
@@ -254,195 +429,180 @@ module tmds_shift_register_ddr(
 	parameter LOCATION_1 = "";
 	parameter LOCATION_2 = "";
 	parameter LOCATION_3 = "";
-	parameter LOCATION_4 = "";
-	parameter LOCATION_5 = "";
-	parameter LOCATION_6 = "";
-	parameter LOCATION_7 = "";
 
-`undef USE_BLOCKRAM
-`ifdef USE_BLOCKRAM
-	wire in0, in1;
-	wire in0_0, in1_0;
-	wire in0_1, in1_1;
-
-	// place two shift registers next to the input pins
-	(* BEL=LOCATION_0 *)
-	SB_DFF buf1_0(
-		.D(in_raw[1]),
-		.C(bit_clk),
-		.Q(in1_0)
-	);
-	(* BEL=LOCATION_1 *)
-	SB_DFF buf1_1(
-		.D(in1_0),
-		.C(bit_clk),
-		.Q(in1_1)
-	);
-	(* BEL=LOCATION_2 *)
-	SB_DFF buf1_2(
-		.D(in1_1),
-		.C(bit_clk),
-		.Q(in1)
-	);
-
-	(* BEL=LOCATION_3 *)
-	SB_DFF buf0_0(
-		.D(in_raw[0]),
-		.C(bit_clk),
-		.Q(in0_0)
-	);
-	(* BEL=LOCATION_4 *)
-	SB_DFF buf0_1(
-		.D(in0_0),
-		.C(bit_clk),
-		.Q(in0_1)
-	);
-	(* BEL=LOCATION_5 *)
-	SB_DFF buf0_2(
-		.D(in0_1),
-		.C(bit_clk),
-		.Q(in0)
-	);
-
-	wire [15:0] rd_data0, rd_data1;
 	reg [BITS-1:0] out;
 
-	// extract just the low-order bits from the 16
-	//assign out = rd_data[9:0];
+`ifdef TMDS_DDR
+`define SIMPLE
+`ifdef SIMPLE
+	reg [BITS-1:0] out;
+	reg [7:0] in0, in1;
 
-	reg [2:0] wr_bits0 = 0, wr_bits1 = 0;
-	reg [1:0] wr_addr0 = 0, wr_addr1 = 0;
-	reg [1:0] rd_addr = 0;
-
-	always @(posedge reset or posedge bit_clk)
-	begin
-		wr_bits0 <= wr_bits0 + 1;
-		if (reset)
-		begin
-			wr_bits0 <= 0;
-			wr_addr0 <= 0;
-		end else
-		if (wr_bits0 == 3'h4)
-		begin
-			wr_bits0 <= 0;
-			wr_addr0 <= wr_addr0 + 1;
-		end
-	end
-
-	always @(posedge hdmi_clk)
-	if (reset)
-		rd_addr <= 1;
-	else begin
-		rd_addr <= rd_addr + 1;
-
-		out <= rd_data0[9:0];
-	end
-
-	dpram_2x16 #(
-		.LOCATION(LOCATION)
-	) dpram_buf0(
-		.wr_clk(bit_clk),
-		.wr_addr({6'b0, wr_addr0, wr_bits0}),
-		.wr_data({in1, in0}),
-		.wr_enable(1'b1),
-		.rd_clk(hdmi_clk),
-		.rd_data(rd_data0),
-		.rd_addr({6'h00, rd_addr})
-	);
-`else
-	// simple shift registers that clock out every five clocks
-	reg [3:0] wr_bits0 = 0, wr_bits1 = 0;
-	reg [4:0] shift0, shift1;
-	reg [9:0] latch0, latch1, latch2;
-	wire in0, in1;
-	wire in0_0, in1_0;
-	wire in0_1, in1_1;
-	wire in0_2, in1_2;
-
-	// place two shift registers next to the input pins
-	(* BEL=LOCATION_0 *)
-	SB_DFF buf1_0(
-		.D(in_raw[1]),
-		.C(bit_clk),
-		.Q(in1_0)
-	);
-	(* BEL=LOCATION_1 *)
-	SB_DFF buf1_1(
-		.D(in1_0),
-		.C(bit_clk),
-		.Q(in1_1)
-	);
-	(* BEL=LOCATION_2 *)
-	SB_DFF buf1_2(
-		.D(in1_1),
-		.C(bit_clk),
-		.Q(in1_2)
-	);
-	(* BEL=LOCATION_3 *)
-	SB_DFF buf1_3(
-		.D(in1_2),
-		.C(bit_clk),
-		.Q(in1)
+	// shift the positive and negative edges of the clocks
+	ice40_shift8 #(
+		.LOCATION(LOCATION_0)
+	) shift_0(
+		.clk(bit_clk),
+		.in(in_raw[0]),
+		.out(in0)
 	);
 
-	(* BEL=LOCATION_4 *)
-	SB_DFF buf0_0(
-		.D(in_raw[0]),
-		.C(bit_clk),
-		.Q(in0_0)
+	ice40_shift8 #(
+		.LOCATION(LOCATION_2)
+	) shift_1(
+		.clk(~bit_clk),
+		.in(in_raw[1]),
+		.out(in1)
 	);
-	(* BEL=LOCATION_5 *)
-	SB_DFF buf0_1(
-		.D(in0_0),
-		.C(bit_clk),
-		.Q(in0_1)
-	);
-	(* BEL=LOCATION_6 *)
-	SB_DFF buf0_2(
-		.D(in0_1),
-		.C(bit_clk),
-		.Q(in0_2)
-	);
-	(* BEL=LOCATION_7 *)
-	SB_DFF buf0_3(
-		.D(in0_2),
-		.C(bit_clk),
-		.Q(in0)
-	);
-
-	reg [1:0] out_raw;
-
+/*
 	always @(posedge bit_clk)
 	begin
-		wr_bits0 <= wr_bits0 + 1;
-		shift0 <= { in0, shift0[4:1] };
-		shift1 <= { in1, shift1[4:1] };
-
-		out_raw <= { in1, in0 };
-
-		if (wr_bits0 == 3'h4)
-		begin
-			wr_bits0 <= 0;
-			latch0 <= shift0;
-			latch1 <= shift1;
-		end
+		in0 <= { in_raw[0], in0[7:1] };
+		in1 <= { in_raw[1], in1[7:1] };
 	end
+*/
 
-	reg [BITS-1:0] out;
 	always @(posedge hdmi_clk)
 	begin
-		out <= latch2;
-		//latch2 <= latch1;
-		//latch1 <= latch0;
-		latch2 <= {
-			latch1[4], latch0[4],
-			latch1[3], latch0[3],
-			latch1[2], latch0[2],
-			latch1[1], latch0[1],
-			latch1[0], latch0[0]
+		//if (hdmi_clk)
+			out <= ~{
+				in1[3], in0[3],
+				in1[4], in0[4],
+				in1[5], in0[5],
+				in1[6], in0[6],
+				in1[7], in0[7]
+			};
+	end
+/*
+	reg [15:0] in;
+	always @(posedge bit_clk)
+	begin
+		in <= { in_raw[0], in[15:1] };
+		if (hdmi_clk)
+			out <= ~in[9:0];
+	end
+*/
+`else
+	reg [9:0] out_latch;
+	wire [7:0] in0, in1;
+	wire [7:0] latch0, latch1;
+
+	//assign out_raw = { in1[0], in0[0] };
+
+	// shift the positive and negative edges of the clocks
+	ice40_shift8 #(
+		.LOCATION(LOCATION_0)
+	) shift_0(
+		.clk(bit_clk),
+		.in(in_raw[0]),
+		.out(in0)
+	);
+
+	ice40_shift8 #(
+		.LOCATION(LOCATION_2)
+	) shift_1(
+		.clk(bit_clk),
+		.in(in_raw[1]),
+		.out(in1)
+	);
+
+	// latch the values on the hdmi clock
+	// which is only a single clock width of bit_clk
+	ice40_reg8 #(
+		.LOCATION(LOCATION_1)
+	) reg_0(
+		.clk(bit_clk),
+		.enable(hdmi_clk),
+		//.clk(hdmi_clk),
+		.in(in0),
+		.out(latch0)
+	);
+
+
+	ice40_reg8 #(
+		.LOCATION(LOCATION_3)
+	) reg_1(
+		.clk(bit_clk),
+		.enable(hdmi_clk),
+		//.clk(hdmi_clk),
+		.in(in1),
+		.out(latch1)
+	);
+
+
+	reg [7:0] latch1_1, latch1_0;
+
+	always @(posedge hdmi_clk)
+	begin
+		latch1_1 <= latch1;
+		latch1_0 <= latch0;
+
+		out <=
+`ifdef BUFFER_LVDS
+		~
+`endif
+		{
+			latch1_1[7], latch1_0[7],
+			latch1_1[6], latch1_0[6],
+			latch1_1[5], latch1_0[5],
+			latch1_1[4], latch1_0[4],
+			latch1_1[3], latch1_0[3]
 		};
 	end
 `endif
+`else
+/*
+	// not DDR, just a simple shift register
+	wire [15:0] in0, latch;
+	ice40_shift8 #(
+		.LOCATION(LOCATION_0)
+	) shift_0(
+		.clk(bit_clk),
+		.in(in_raw[0]),
+		.out(in0[7:0])
+	);
+
+	ice40_shift8 #(
+		.LOCATION(LOCATION_1)
+	) shift_1(
+		.clk(bit_clk),
+		.in(in0[7]),
+		.out(in0[15:8])
+	);
+
+	ice40_reg8 #(
+		.LOCATION(LOCATION_2)
+	) reg_0(
+		.clk(bit_clk),
+		.enable(hdmi_clk),
+		.in(in0[7:0]),
+		.out(latch[7:0])
+	);
+	ice40_reg8 #(
+		.LOCATION(LOCATION_3)
+	) reg_1(
+		.clk(bit_clk),
+		.enable(hdmi_clk),
+		.in(in0[15:8]),
+		.out(latch[15:8])
+	);
+
+	always @(posedge hdmi_clk)
+	begin
+		//in0 <= { in0[8:0], in_raw[0] };
+		out <= latch[9:0];
+	end
+*/
+	reg [9:0] in0;
+	always @(posedge bit_clk)
+	begin
+		in0 <= { in0[8:0], in_raw[0] };
+		if (hdmi_clk)
+			out <= in0;
+	end
+
+`endif
+
 endmodule
 
 // detect a control message in the shift register and use it
@@ -450,6 +610,7 @@ endmodule
 // tracks if our clock is still in sync with the old values
 module tmds_sync_recognizer(
 	input reset,
+	input phase_step,
 	input hdmi_clk,
 	input [19:0] in,
 	output valid,
@@ -459,10 +620,10 @@ module tmds_sync_recognizer(
 	//parameter CTRL_01 = 10'b0010101011; // 0AB
 	//parameter CTRL_10 = 10'b0101010100; // 154
 	parameter CTRL_11 = 10'b1010101011; // 2AB
-	parameter DELAY_BITS = 21;
+	parameter DELAY_BITS = 22;
 
 	reg valid = 0;
-	reg [3:0] phase = 0;
+	reg [3:0] phase = 8;
 	reg [DELAY_BITS:0] counter;
 
 	// look for CTRL_11 repeated twice to recognize that
@@ -476,6 +637,7 @@ module tmds_sync_recognizer(
 	begin
 		counter <= 0;
 		valid <= 0;
+		phase <= 0;
 	end else begin
 		// store just the last half since it will be
 		// shifted by ten next time
@@ -487,14 +649,15 @@ module tmds_sync_recognizer(
 			valid <= 1;
 			counter <= 0;
 		end else
-		if (counter[DELAY_BITS])
+		if (phase_step)
 		begin
-			// no recent control word! adjust the phase
 			if (phase == 4'h9)
 				phase <= 0;
 			else
 				phase <= phase + 1;
-
+		end
+		if (counter[DELAY_BITS])
+		begin
 			valid <= 0;
 			counter <= 0;
 		end else begin
@@ -511,16 +674,24 @@ endmodule
 // when locked
 module tmds_raw_decoder(
 	input reset,
+	input phase_step,
 
 	input d0_p,
 	input d1_p,
 	input d2_p,
 	input clk_p,
+	input [4:0] phase_shift = 0,
 
-	// d0,d1,d2 are in clk domain
+	// d0,d1,d2 are phase corrected in clk domain
 	output [9:0] d0,
 	output [9:0] d1,
 	output [9:0] d2,
+
+	// d0_data etc are unphase corrected, but in clk domain
+	output [9:0] d0_data,
+	output [9:0] d1_data,
+	output [9:0] d2_data,
+
 	output valid, // good pixel data
 	output locked, // only timing data
 	output hdmi_clk,
@@ -545,6 +716,7 @@ module tmds_raw_decoder(
 		.d1_p(d1_p),
 		.d2_p(d2_p),
 		.clk_p(clk_p),
+		.phase_shift(phase_shift),
 		// outputs
 		.hdmi_clk(hdmi_clk),
 		.bit_clk(bit_clk),
@@ -584,22 +756,39 @@ module tmds_raw_decoder(
 	// the timing gets really bad, depending on the seed etc
 	// these also output in the hdmi_clk domain, so no
 	// clock crossing is required
+/*
+	wire [7:0] wr_reg;
+	wire next_latch_enable = wr_reg[3:0] == 4'b0000;
+	ice40_shift8 #(.LOCATION("X14/Y30"))
+	wr_reg_buf(
+		.clk(bit_clk),
+		.in(next_latch_enable),
+		.out(wr_reg)
+	);
+*/
+	reg latch_enable = 0;
+	always @(posedge hdmi_clk)
+		latch_enable <= ~latch_enable;
+
+	// the latch enable bit will be shifted here after
+	// five cycles, so the shift registers will ten new
+	// bits of data.  this bit should onlybe high for
+	// a single clock cycle
+	//wire latch_enable = wr_reg[4];
 
 	// Info: constrained 'tmds_d0n' to bel 'X19/Y31/io0'
 	tmds_shift_register_ddr #(
 		.LOCATION("X19/Y25/ram"),
-		.LOCATION_0("X20/Y30/lc7"),
-		.LOCATION_1("X20/Y30/lc6"),
-		.LOCATION_2("X20/Y30/lc5"),
-		.LOCATION_3("X20/Y30/lc4"),
-		.LOCATION_4("X20/Y30/lc3"),
-		.LOCATION_5("X20/Y30/lc2"),
-		.LOCATION_6("X20/Y30/lc1"),
-		.LOCATION_7("X20/Y30/lc0")
+		.LOCATION_0("X21/Y30"),
+		.LOCATION_1("X20/Y30"),
+		.LOCATION_2("X21/Y29"),
+		.LOCATION_3("X20/Y29")
 	) d0_shift(
 		.reset(reset),
 		.hdmi_clk(hdmi_clk),
 		.bit_clk(bit_clk),
+		.bit_clk_180(~bit_clk),
+		.latch_enable(latch_enable),
 		.in_raw(in0_raw),
 		.out(d0_data),
 		.out_raw(out_raw[1:0])
@@ -608,18 +797,16 @@ module tmds_raw_decoder(
 	// Info: constrained 'tmds_d1n' to bel 'X18/Y31/io0'
 	tmds_shift_register_ddr #(
 		.LOCATION("X19/Y29/ram"),
-		.LOCATION_0("X18/Y30/lc7"),
-		.LOCATION_1("X18/Y30/lc6"),
-		.LOCATION_2("X18/Y30/lc5"),
-		.LOCATION_3("X18/Y30/lc4"),
-		.LOCATION_4("X18/Y30/lc3"),
-		.LOCATION_5("X18/Y30/lc2"),
-		.LOCATION_6("X18/Y30/lc1"),
-		.LOCATION_7("X18/Y30/lc0")
+		.LOCATION_0("X18/Y30"),
+		.LOCATION_1("X17/Y30"),
+		.LOCATION_2("X18/Y29"),
+		.LOCATION_3("X17/Y29")
 	) d1_shift(
 		.reset(reset),
 		.hdmi_clk(hdmi_clk),
 		.bit_clk(bit_clk),
+		.bit_clk_180(~bit_clk),
+		.latch_enable(latch_enable),
 		.in_raw(in1_raw),
 		.out(d1_data),
 		.out_raw(out_raw[3:2])
@@ -628,18 +815,16 @@ module tmds_raw_decoder(
 	// Info: constrained 'tmds_d2p' to bel 'X16/Y31/io0'
 	tmds_shift_register_ddr #(
 		.LOCATION("X19/Y27/ram"),
-		.LOCATION_0("X16/Y30/lc7"),
-		.LOCATION_1("X16/Y30/lc6"),
-		.LOCATION_2("X16/Y30/lc5"),
-		.LOCATION_3("X16/Y30/lc4"),
-		.LOCATION_4("X16/Y30/lc3"),
-		.LOCATION_5("X16/Y30/lc2"),
-		.LOCATION_6("X16/Y30/lc1"),
-		.LOCATION_7("X16/Y30/lc0")
+		.LOCATION_0("X16/Y30"),
+		.LOCATION_1("X15/Y30"),
+		.LOCATION_2("X16/Y29"),
+		.LOCATION_3("X15/Y29")
 	) d2_shift(
 		.reset(reset),
 		.hdmi_clk(hdmi_clk),
 		.bit_clk(bit_clk),
+		.bit_clk_180(~bit_clk),
+		.latch_enable(latch_enable),
 		.in_raw(in2_raw),
 		.out(d2_data),
 		.out_raw(out_raw[5:4])
@@ -652,6 +837,7 @@ module tmds_raw_decoder(
 
 	tmds_sync_recognizer d0_sync_recognizer(
 		.reset(reset),
+		.phase_step(phase_step),
 		.hdmi_clk(hdmi_clk),
 		.in(d0_ext),
 		.phase(phase),
@@ -667,6 +853,7 @@ endmodule
 
 module tmds_decoder(
 	input reset,
+	input phase_step,
 
 	// the differential pair inputs only take the positive pin
 	// otherwise nextpnr gets upset!
@@ -674,6 +861,7 @@ module tmds_decoder(
 	input d0_p,
 	input d1_p,
 	input d2_p,
+	input [4:0] phase_shift = 0,
 
 	// hdmi pixel clock and PLL'ed bit clock
 	output hdmi_clk,
@@ -714,12 +902,14 @@ module tmds_decoder(
 	tmds_raw_decoder #(.INVERT(INVERT))
 	tmds_raw_i(
 		.reset(reset),
+		.phase_step(phase_step),
 
 		// physical inputs
 		.clk_p(clk_p),
 		.d0_p(d0_p),
 		.d1_p(d1_p),
 		.d2_p(d2_p),
+		.phase_shift(phase_shift),
 
 		// outputs
 		.hdmi_clk(hdmi_clk),

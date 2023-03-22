@@ -85,7 +85,7 @@ module display(
 
 	hdmi_dither #(
 		.X_OFFSET(64),
-		.Y_OFFSET(128)
+		.Y_OFFSET(140)
 	) dither(
 		.hdmi_clk(hdmi_clk),
 		.hdmi_valid(hdmi_valid && rgb_valid),
@@ -147,7 +147,7 @@ module display(
 			// delay any writes that might be happening
 			// since reading from the frame buffer has
 			// real-time priority
-			//mono_bits_ready_delay <= mono_bits_ready;
+			mono_bits_ready_delay <= mono_bits_ready;
 		end else begin
 			// allow any writes or delayed writes to happen
 			// when they are in the active part of the display
@@ -174,9 +174,9 @@ module display(
 	mac_display crt(
 		.clk_16mhz(clk_16mhz),
 		.reset(reset),
+		.out(gpio_bank_1[0]),
 		.hsync(gpio_bank_1[1]),
 		.vsync(gpio_bank_1[2]),
-		.out(gpio_bank_1[0]),
 		.xaddr(fb_xaddr),
 		.yaddr(fb_yaddr),
 		.fb_data(video_bit)

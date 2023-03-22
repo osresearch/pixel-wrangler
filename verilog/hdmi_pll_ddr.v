@@ -29,29 +29,36 @@ module hdmi_pll(
 	output clock_out,
 	output locked,
 	input reset,
-	input [3:0] delay
+	input [7:0] delay
 	);
 
-	// total guess that seems to work well
-	//  0 == some static
-	//  4 == no static?
-	// 15 == badly distorted video
+	// these move the PLL rising edge relative to the
+	// input clock's rising edge. each step is around 150ps
+	parameter ADVANCE = 4'd0;
 	parameter DELAY = 4'd0;
 
+// based on the https://github.com/YosysHQ/icestorm/wiki/iCE40-PLL-documentation
+// out = in * 4 * (divf + 1) / (divr + 1) / 2^divq
+// we want 5x the input clock, so DIVF = 5 - 1
+// the shit register has a 4x multiplier effect on DIVF,
+// this produces a 20x clock, so we divide by 4 (DIVR=4-1)
+// divq does not seem to matter as long as it is non-zero?
 SB_PLL40_CORE #(
-		.FEEDBACK_PATH("SIMPLE"),
-		.DIVR(4'b0000),		// DIVR =  0
-		.DIVF(7'd39),	// DIVF = 4 for non-simple
-		.DIVQ(3'b011),		// DIVQ =  3
+		.FEEDBACK_PATH("PHASE_AND_DELAY"),
+		.DIVR(4'd0),		// DIVR =  4 - 1
+		.DIVF(7'd4),	// DIVF = 5 - 1
+		.DIVQ(3'b001),		// DIVQ =  3
 		.FILTER_RANGE(3'b010),	// FILTER_RANGE = 2
-		//.DELAY_ADJUSTMENT_MODE_FEEDBACK("DYNAMIC")
-		.FDA_FEEDBACK(DELAY),
-		.DELAY_ADJUSTMENT_MODE_FEEDBACK("FIXED")
+		.FDA_FEEDBACK(ADVANCE),
+		.FDA_RELATIVE(DELAY),
+		.DELAY_ADJUSTMENT_MODE_FEEDBACK("DYNAMIC"),
+		.DELAY_ADJUSTMENT_MODE_RELATIVE("DYNAMIC"),
+		.PLLOUT_SELECT("SHIFTREG_90deg")
 	) uut (
 		.LOCK(locked),
 		.RESETB(~reset),
 		.BYPASS(1'b0),
-		//.DYNAMICDELAY({4'b0, delay}),
+		.DYNAMICDELAY(delay),
 		.REFERENCECLK(clock_in),
 		.PLLOUTGLOBAL(clock_out)
 		);

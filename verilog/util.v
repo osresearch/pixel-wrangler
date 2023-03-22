@@ -82,7 +82,7 @@ module clock_cross_strobe(
 	output out
 );
 	reg flag = 0;
-	reg last_flag = 0;
+	reg [2:0] last_flag = 0;
 	reg out = 0;
 
 	always @(posedge clk_in)
@@ -91,8 +91,8 @@ module clock_cross_strobe(
 
 	always @(posedge clk_out)
 	begin
-		out <= last_flag != flag;
-		last_flag <= flag;
+		last_flag <= { last_flag[1:0], flag };
+		out <= last_flag[2] != last_flag[1];
 	end
 endmodule
 

@@ -136,7 +136,8 @@ module hdmi_framebuffer(
 
 	wire [11:0] xoffset = xaddr - MIN_X;
 	wire [11:0] yoffset = yaddr - MIN_Y;
-	wire in_window = (xoffset < WIDTH) && (yoffset < HEIGHT);
+	wire in_window_next = (xoffset < WIDTH) && (yoffset < HEIGHT);
+	reg in_window;
 
 	reg [ADDR_WIDTH-1:0] waddr;
 	reg wen = 0;
@@ -184,7 +185,8 @@ module hdmi_framebuffer(
 
 	always @(posedge hdmi_clk)
 	begin
-		wen <= rgb_valid && in_window;
+		in_window <= in_window_next;
+		wen <= rgb_valid && in_window_next;
 		waddr <= (xoffset) | (yoffset * WIDTH);
 	end
 endmodule
