@@ -1,0 +1,16 @@
+#!/usr/bin/python3
+# Create a hex file with 16-bit gamma curves for 8-bit inputs
+import math
+import sys
+
+gamma = 2.2
+
+if len(sys.argv) > 1:
+	gamma = float(sys.argv[1])
+
+scale = 65536.0 / math.pow(256, gamma)
+
+for x in range(0,256):
+	out = scale * math.pow(x, gamma)
+	#print("%02x => %.3f" % (x, out))
+	print("%04x" % (int(out)))
