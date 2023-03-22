@@ -1,0 +1,39 @@
+#!/usr/bin/python
+
+xor	= [[0,1],[1,0]]
+xnor	= [[1,0],[0,1]]
+
+def encode(x):
+	bits = [int(_) for _ in format(x & 0xFF, "08b")]
+	ones = 0
+	for i in range(0,8):
+		if bits[i] == 1:
+			ones += 1
+
+	if ones > 4 or (ones == 4 and bits[0] == 0):
+		op = xnor
+		bit_op = 0
+	else:
+		op = xor
+		bit_op = 1
+
+	for i in range(1,8):
+		bits[i] = op[bits[i-1]][bits[i]]
+
+	x = '0' + str(bit_op)
+	y = '1' + str(bit_op)
+	for i in bits:
+		x += str(i)
+		y += str(0 if i else 1)
+	return (x,y)
+	
+
+patterns = {}
+for i in range(0,256):
+	(a,b) = encode(i)
+	patterns[a] = i
+	patterns[b] = i
+
+for bit,i in sorted(patterns.items()):
+	print("%s %04x => %02x" % (bit, int(bit,2), i))
+
