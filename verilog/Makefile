@@ -4,17 +4,23 @@ include Makefile.icestorm
 
 mac.json: bluenoise-32.hex bluenoise-64.hex bluenoise-128.hex bluenoise-256.hex
 
+
+hub75.json: gamma.2.8.hex
+
 %.hex: ../images/%.png
 	convert $< gray:- \
 	| xxd -g1 -c1 \
 	| cut -d" " -f2 \
 	> $@
 
+gamma.%.hex:
+	../bin/gamma > $@ $(patsubst gamma.%.hex,%,$@)
 
-prog-%: %.bin
+
+%.prog: %.bin
 	tinyprog -p $<
 
-prog-meta: boardmeta.json
+boardmeta.prog: boardmeta.json
 	tinyprog -a 1 --security $<
 
 # create a board meta file
