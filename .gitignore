@@ -8,3 +8,4 @@ _autosave*
 *-backups
 *.gbrjob
 *auto_saved*
+*.hex
